@@ -1,0 +1,1261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<!-- Security rule: the browser itself blocks every network connection from this page
+     (no fetch, uploads, web sockets, beacons, external scripts, fonts, images or frames).
+     Everything this tracker needs is inside this one file. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; font-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; manifest-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ticket Time Tracker 4.6</title>
+<style>
+:root{
+  --bg:#f6f7f5; --panel:#ffffff; --ink:#16211f; --sub:#5a6663;
+  --line:#dde3e0; --accent:#2f6e5c; --accent-ink:#ffffff;
+  --warn:#b8860b; --danger:#a13a3a; --done:#3d6b45;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#12181a; --panel:#1a2225; --ink:#e7ece9; --sub:#93a0a0;
+    --line:#2b3538; --accent:#4c9c82; --accent-ink:#0c1614;
+    --warn:#e0b030; --danger:#d16a6a; --done:#63b46f;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#12181a; --panel:#1a2225; --ink:#e7ece9; --sub:#93a0a0;
+  --line:#2b3538; --accent:#4c9c82; --accent-ink:#0c1614;
+  --warn:#e0b030; --danger:#d16a6a; --done:#63b46f;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px);}
+*{box-sizing:border-box;}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  min-height:100%; padding:32px 20px 64px;
+}
+.wrap{max-width:1200px; margin:0 auto;}
+.form-row{max-width:780px;}
+h1{font-size:1.5rem; margin:0 0 4px; letter-spacing:-0.01em;}
+.sub{color:var(--sub); margin:0 0 28px; font-size:0.92rem;}
+
+.form-row{
+  display:flex; gap:10px; margin-bottom:24px; flex-wrap:wrap;
+}
+input{
+  flex:1; min-width:140px; padding:10px 12px; border:1px solid var(--line);
+  border-radius:8px; background:var(--panel); color:var(--ink); font-size:0.95rem;
+}
+input:focus{outline:2px solid var(--accent); outline-offset:1px;}
+button{
+  font-family:inherit; font-size:0.9rem; border:none; border-radius:8px;
+  padding:10px 16px; cursor:pointer; transition:opacity .15s;
+}
+button:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+button:hover{opacity:0.85;}
+.btn-primary{background:var(--accent); color:var(--accent-ink); font-weight:600;}
+.btn-ghost{background:transparent; color:var(--ink); border:1px solid var(--line);}
+
+.toolbar{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px; gap:12px; flex-wrap:wrap;}
+
+.tabs{display:flex; gap:4px; margin-bottom:14px; border-bottom:1px solid var(--line);}
+.tab-btn{
+  background:transparent; border:none; border-radius:0; padding:9px 4px; margin-right:18px;
+  font-size:0.9rem; color:var(--sub); border-bottom:2px solid transparent; opacity:1;
+}
+.tab-btn.active{color:var(--ink); font-weight:600; border-bottom-color:var(--accent);}
+.tab-btn:hover{opacity:1; color:var(--ink);}
+.count{color:var(--sub); font-size:0.85rem;}
+.count.warn{color:var(--warn); font-weight:600;}
+.banner{background:var(--danger); color:#fff; border-radius:8px; padding:10px 14px; margin:0 0 16px; font-size:0.88rem; line-height:1.4;}
+.banner[hidden]{display:none;}
+
+#ticket-list{
+  display:grid; gap:10px;
+  grid-template-columns:repeat(auto-fill, minmax(min(100%, 250px), 1fr));
+}
+.empty{grid-column:1 / -1; color:var(--sub); font-size:0.9rem; padding:28px 0; text-align:center; border:1px dashed var(--line); border-radius:10px;}
+
+.card{
+  background:var(--panel); border:1px solid var(--line); border-radius:10px;
+  padding:11px 13px; display:flex; flex-direction:column; min-width:0;
+}
+.card-top{display:flex; justify-content:space-between; gap:8px; align-items:flex-start;}
+.card-top > div{min-width:0;}
+.card-title{font-weight:600; font-size:0.95rem;}
+.card-agent{color:var(--sub); font-size:0.8rem; margin-top:1px;}
+.card-customer, .card-agent{white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.card .actions{margin-top:auto;}
+.card .actions button{padding:5px 10px; font-size:0.8rem;}
+.edit-form{display:flex; flex-direction:column; gap:6px; margin-bottom:8px;}
+.edit-form input, .edit-form textarea{min-width:0; width:100%; padding:7px 9px; font-size:0.88rem;}
+.status{
+  font-size:0.78rem; padding:3px 9px; border-radius:20px; white-space:nowrap; font-weight:600;
+}
+.status.notstarted{background:var(--line); color:var(--sub);}
+.status.running{background:var(--accent); color:var(--accent-ink);}
+.status.paused{background:var(--warn); color:#fff;}
+.status.finished{background:var(--done); color:#fff;}
+
+.timer{font-size:1.25rem; font-variant-numeric:tabular-nums; margin:6px 0 8px;}
+.competency{display:flex; align-items:center; justify-content:space-between; gap:8px; margin:0 0 10px; font-size:0.8rem; color:var(--sub);}
+.competency select{
+  font:inherit; font-size:0.82rem; color:var(--ink); background:var(--panel);
+  border:1px solid var(--line); border-radius:6px; padding:4px 6px; min-width:96px;
+}
+.competency select:focus{outline:2px solid var(--accent); outline-offset:1px;}
+.competency.unrated select{color:var(--sub);}
+.actions{display:flex; gap:8px; flex-wrap:wrap;}
+.actions button{padding:7px 13px; font-size:0.85rem;}
+.act-start{background:var(--accent); color:var(--accent-ink);}
+.act-pause{background:var(--warn); color:#fff;}
+.act-edit{background:var(--accent); color:var(--accent-ink);}
+.act-finish{background:var(--danger); color:#fff;}
+.act-remove{background:transparent; color:var(--sub); border:1px solid var(--line);}
+.meta{color:var(--sub); font-size:0.78rem; margin:-4px 0 8px;}
+
+.export-button{margin-top:4px;}
+
+.header-row{display:flex; justify-content:space-between; align-items:flex-start; gap:12px;}
+.theme-toggle{
+  background:transparent; border:1px solid var(--line); color:var(--ink);
+  padding:8px 12px; font-size:0.85rem; white-space:nowrap;
+}
+textarea{
+  flex:1; min-width:140px; padding:10px 12px; border:1px solid var(--line);
+  border-radius:8px; background:var(--panel); color:var(--ink); font-size:0.95rem;
+  font-family:inherit; resize:vertical; min-height:40px;
+}
+textarea:focus{outline:2px solid var(--accent); outline-offset:1px;}
+.card-customer{font-size:0.8rem; margin-top:1px; color:var(--ink);}
+.card-complaint{
+  font-size:0.82rem; color:var(--sub); margin-top:5px; line-height:1.35;
+  display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+  overflow-wrap:anywhere;
+}
+
+.overlay{
+  position:fixed; inset:0; background:var(--bg); z-index:50;
+  display:flex; align-items:center; justify-content:center; padding:20px;
+}
+.login-box{
+  background:var(--panel); border:1px solid var(--line); border-radius:12px;
+  padding:28px 24px; max-width:340px; width:100%;
+}
+.login-box h2{margin:0 0 6px; font-size:1.15rem;}
+.login-box p{margin:0 0 16px; color:var(--sub); font-size:0.88rem;}
+.login-box input{width:100%; margin-bottom:12px;}
+.login-box button{width:100%;}
+.agent-badge{
+  display:flex; align-items:center; gap:8px; font-size:0.85rem; color:var(--sub);
+}
+.agent-badge button{padding:4px 10px; font-size:0.78rem; background:transparent; border:1px solid var(--line); color:var(--ink);}
+</style>
+</head>
+<body>
+<div class="overlay" id="login-overlay">
+  <div class="login-box">
+    <h2 id="auth-title">Sign in</h2>
+    <p id="auth-subtitle"></p>
+    <input id="login-agent-input" type="text" placeholder="Agent ID" autocomplete="off">
+    <input id="login-pin-input" type="password" inputmode="numeric" placeholder="PIN (4–6 digits)" maxlength="6" autocomplete="off">
+    <input id="login-pin-confirm-input" type="password" inputmode="numeric" placeholder="Confirm PIN" maxlength="6" autocomplete="off" style="display:none;">
+    <div id="auth-error" style="color:var(--danger); font-size:0.82rem; margin:-4px 0 12px; display:none;"></div>
+    <button class="btn-primary" id="auth-submit-button">Sign in</button>
+    <button class="btn-ghost" id="auth-reset-button" type="button" style="margin-top:8px; display:none;">Forgot PIN? Reset account</button>
+    <p id="auth-note" style="font-size:0.75rem; color:var(--sub); margin-top:10px; margin-bottom:0;">The account is saved in this browser. If it's ever lost, just set it up again; tickets and the work log aren't affected.</p>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="banner" id="storage-banner" role="alert" hidden></div>
+  <div class="header-row">
+    <div>
+      <h1>Ticket time tracker</h1>
+      <p class="sub">Log how long each ticket takes, pause for interruptions, then export the totals.</p>
+    </div>
+    <button class="theme-toggle" id="theme-toggle-button" type="button">🌙 Dark mode</button>
+  </div>
+
+  <div class="agent-badge" id="agent-badge" style="margin-bottom:16px;"></div>
+
+  <div class="form-row">
+    <input id="customer-input" type="text" placeholder="Customer name" aria-label="Customer name" list="ship-list" autocomplete="off">
+  </div>
+  <div class="form-row">
+    <input id="category-input" type="text" placeholder="Category" aria-label="Category" list="category-list" autocomplete="off">
+  </div>
+  <datalist id="ship-list"></datalist>
+  <datalist id="category-list"></datalist>
+  <div class="form-row">
+    <textarea id="complaint-input" placeholder="Complaint / issue description" aria-label="Complaint"></textarea>
+  </div>
+  <div class="form-row">
+    <button class="btn-primary" id="new-ticket-button">New ticket</button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn" id="tab-active" type="button">In Progress</button>
+    <button class="tab-btn" id="tab-finished" type="button">Finished</button>
+  </div>
+
+  <div class="toolbar">
+    <span class="count" id="ticket-count"></span>
+    <button class="btn-ghost export-button" id="export-button">Export as CSV</button>
+  </div>
+
+  <div class="toolbar" id="log-bar" style="margin-bottom:16px;"></div>
+
+  <div id="ticket-list"></div>
+</div>
+
+<script>
+(function(){
+  const THEME_KEY = 'ticket-tracker:theme';
+
+  const CURRENT_AGENT_KEY = 'ticket-tracker:current-agent';
+  const LEGACY_ACCOUNTS_KEY = 'ticket-tracker:local-accounts'; // read once to upgrade older versions
+  const CATEGORIES_KEY = 'ticket-tracker:categories';
+  const DEFAULT_CATEGORIES = ['Hardware','Software','Power','Networks','Lowband','Highband','IO','Mission Modules'];
+
+  let categories = [];
+  let currentAgent = null;
+  let authMode = 'login';
+
+  function normalizeAgentKey(id){
+    return (id || '').trim().toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'') || 'agent';
+  }
+  async function hashPin(key, pin){
+    const enc = new TextEncoder().encode('ticket-tracker:'+key+':'+pin);
+    const buf = await crypto.subtle.digest('SHA-256', enc);
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
+  // ---- Single account ----
+  // This copy of the tracker holds exactly one account. No accounts file, no merging, and no
+  // way to end up with two accounts for the same person.
+  const ACCOUNT_KEY = 'ticket-tracker:account';
+  let account = null;          // {agentId, pinHash, createdAt}
+  let legacyAccounts = null;   // only used once, when upgrading a browser that had several accounts
+
+  function readAccount(){
+    try{ const raw = localStorage.getItem(ACCOUNT_KEY); const a = raw ? JSON.parse(raw) : null; return a && a.pinHash ? a : null; }
+    catch(e){ return null; }
+  }
+  function saveAccount(a){
+    account = a;
+    try{ localStorage.setItem(ACCOUNT_KEY, JSON.stringify(a)); }catch(e){}
+  }
+  function loadAccount(){
+    account = readAccount();
+    legacyAccounts = null;
+    if(!account) migrateLegacyAccounts();
+  }
+  // Older versions stored several accounts. If the right one is obvious, adopt it silently;
+  // otherwise the first person to sign in with one of them claims this tracker.
+  function migrateLegacyAccounts(){
+    let legacy = {};
+    try{ legacy = JSON.parse(localStorage.getItem(LEGACY_ACCOUNTS_KEY) || '{}') || {}; }catch(e){}
+    const keys = Object.keys(legacy).filter(k => legacy[k] && legacy[k].pinHash);
+    if(!keys.length) return;
+    let pick = null;
+    if(keys.length === 1) pick = legacy[keys[0]];
+    else{
+      let cur = null;
+      try{ cur = localStorage.getItem(CURRENT_AGENT_KEY); }catch(e){}
+      if(cur && legacy[normalizeAgentKey(cur)]) pick = legacy[normalizeAgentKey(cur)];
+    }
+    if(pick){ saveAccount(pick); return; }
+    legacyAccounts = legacy;
+  }
+  const SHIP_NAMES = ["BERTHOLF","CALHOUN","HAMILTON","JAMES","KIMBALL","MIDGETT","MUNRO","STONE","STRATTON","USS ABRAHAM LINCOLN","USS AMERICA","USS ANCHORAGE","USS ARLEIGH BURKE","USS ARLINGTON","USS BAINBRIDGE","USS BARRY","USS BATAAN","USS BENFOLD","USS BLUE RIDGE","USS BOXER","USS BULKELEY","USS CAPE ST. GEORGE","USS CARL M. LEVIN","USS CARL VINSON","USS CARNEY","USS CHAFEE","USS CHOSIN","USS CHUNG-HOON","USS CURTIS WILBUR","USS DANIEL INOUYE","USS DECATUR","USS DELBERT D. BLACK","USS DEWEY","USS DONALD COOK","USS DWIGHT D. EISENHOWER","USS ESSEX","USS FARRAGUT","USS FITZGERALD","USS FOREST SHERMAN","USS FORT LAUDERDALE","USS FRANK E. PETERSON","USS GEORGE H.W. BUSH","USS GEORGE WASHINGTON","USS GERALD R. FORD","USS GETTYSBURG","USS GONZALEZ","USS GRAVELY","USS GREEN BAY","USS GRIDLEY","USS HALSEY","USS HARRY S. TRUMAN","USS HIGGINS","USS HOPPER","USS HOWARD","USS IWO JIMA","USS JACK H LUCAS","USS JAMES E WILLIAMS","USS JASON DUNHAM","USS JOHN BASILONE","USS JOHN C. STENNIS","USS JOHN FINN","USS JOHN P. MURTHA","USS JOHN PAUL JONES","USS JOHN S. MCCAIN","USS KEARSARGE","USS KIDD","USS LABOON","USS LAKE ERIE","USS LASSEN","USS LENAH S.HIGBEE","USS MAHAN","USS MAKIN ISLAND","USS MASON","USS MCCAMPBELL","USS MCFAUL","USS MICHAEL MONSOOR","USS MICHAEL MURPHY","USS MILIUS","USS MITSCHER","USS MOMSEN","USS MT WHITNEY","USS MUSTIN","USS NEW ORLEANS","USS NIMITZ","USS NITZE","USS OSCAR AUSTIN","USS O\u2019KANE","USS PAUL HAMILTON","USS PAUL IGNATIOUS","USS PINCKNEY","USS PORTER","USS PORTLAND","USS PREBLE","USS PRINCETON","USS RAFAEL PERALTA","USS RALPH JOHNSON","USS RAMAGE","USS RICHARD M MCCOOL","USS ROBERT SMALLS","USS RONALD REAGAN","USS ROOSEVELT","USS ROSS","USS RUSSELL","USS SAMPSON","USS SAN ANTONIO","USS SAN DIEGO","USS SHILOH","USS SHOUP","USS SOMERSET","USS SPRUANCE","USS STERETT","USS STETHEM","USS STOCKDALE","USS STOUT","USS T. ROOSEVELT","USS THE SULLIVANS","USS THOMAS HUDNER","USS TRIPOLI","USS TRUXTUN","USS MESA VERDE","USS NEW YORK","USS WASP","USS WAYNE E. MEYER","USS WILLIAM P. LAWRENCE","USS WINSTON S CHURCHILL","WAESCHE"];
+  let tickets = [];
+  let editingId = null;
+  let activeTab = 'active';
+  const intervalIds = {};
+
+  function populateShipList(){
+    const dl = document.getElementById('ship-list');
+    dl.innerHTML = SHIP_NAMES.map(n => `<option value="${escapeHtml(n)}"></option>`).join('');
+  }
+
+
+  function loadCategories(){
+    try{
+      const raw = localStorage.getItem(CATEGORIES_KEY);
+      categories = raw ? JSON.parse(raw) : DEFAULT_CATEGORIES.slice();
+    }catch(e){ categories = DEFAULT_CATEGORIES.slice(); }
+    if(!categories.length) categories = DEFAULT_CATEGORIES.slice();
+    saveCategories();
+    populateCategoryList();
+  }
+  function saveCategories(){
+    try{ localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories)); }catch(e){}
+  }
+  function populateCategoryList(){
+    const dl = document.getElementById('category-list');
+    dl.innerHTML = categories.slice().sort().map(n => `<option value="${escapeHtml(n)}"></option>`).join('');
+  }
+  function ensureCategory(name){
+    const trimmed = (name || '').trim();
+    if(!trimmed) return;
+    if(!categories.some(c => c.toLowerCase() === trimmed.toLowerCase())){
+      categories.push(trimmed);
+      saveCategories();
+      populateCategoryList();
+    }
+  }
+
+  function renderAgentBadge(){
+    const badge = document.getElementById('agent-badge');
+    if(!currentAgent){ badge.innerHTML=''; return; }
+    badge.innerHTML = `Signed in as <strong style="color:var(--ink)">${escapeHtml(currentAgent)}</strong>`;
+    const lockBtn = document.createElement('button');
+    lockBtn.textContent = 'Sign out';
+    lockBtn.onclick = logoutAgent;
+    badge.appendChild(lockBtn);
+  }
+
+  // Modes: 'setup' (no account yet), 'login' (account exists), 'legacy' (pick one of several old accounts)
+  function currentAuthMode(){
+    if(account) return 'login';
+    if(legacyAccounts) return 'legacy';
+    return 'setup';
+  }
+  function renderAuth(){
+    authMode = currentAuthMode();
+    const title = document.getElementById('auth-title');
+    const subtitle = document.getElementById('auth-subtitle');
+    const agentInput = document.getElementById('login-agent-input');
+    const confirmInput = document.getElementById('login-pin-confirm-input');
+    const submit = document.getElementById('auth-submit-button');
+    const reset = document.getElementById('auth-reset-button');
+    if(authMode === 'login'){
+      title.textContent = `Welcome back, ${account.agentId}`;
+      subtitle.textContent = 'Enter your PIN to continue.';
+      submit.textContent = 'Sign in';
+    }else if(authMode === 'legacy'){
+      title.textContent = 'Choose this tracker’s account';
+      subtitle.textContent = 'This browser has accounts from an older version. Sign in with yours and it becomes the only account here.';
+      submit.textContent = 'Sign in';
+    }else{
+      title.textContent = 'Set up your tracker';
+      subtitle.textContent = 'This tracker holds one account. Choose your Agent ID and a 4–6 digit PIN.';
+      submit.textContent = 'Create account';
+    }
+    agentInput.style.display = authMode === 'login' ? 'none' : 'block';
+    confirmInput.style.display = authMode === 'setup' ? 'block' : 'none';
+    reset.style.display = authMode === 'login' ? 'block' : 'none';
+    document.getElementById('login-pin-input').value = '';
+    confirmInput.value = '';
+    showAuthError('');
+  }
+  function showAuthError(msg){
+    const el = document.getElementById('auth-error');
+    el.textContent = msg;
+    el.style.display = msg ? 'block' : 'none';
+  }
+  async function handleAuthSubmit(){
+    // After a browser restart the log folder needs permission again. This click is the user
+    // gesture the browser requires, so ask now instead of making the agent find Reconnect.
+    if(logDirHandle && !logDirReady){
+      logDirHandle.requestPermission({mode:'readwrite'}).then(p=>{
+        logDirReady = p === 'granted';
+        if(logDirReady){ logNotice = ''; syncLogFolder(); }
+        renderLogBar();
+      }).catch(()=>{});
+    }
+    // Pick up an account created or reset in another tab.
+    loadAccount();
+    if(authMode !== currentAuthMode()){ renderAuth(); showAuthError('The account changed in another tab — please try again.'); return; }
+    const pin = document.getElementById('login-pin-input').value;
+    const agentId = authMode === 'login' ? account.agentId : document.getElementById('login-agent-input').value.trim();
+    if(!agentId){ showAuthError('Enter an Agent ID.'); return; }
+    if(!/^\d{4,6}$/.test(pin)){ showAuthError('PIN must be 4–6 digits.'); return; }
+    const key = normalizeAgentKey(agentId);
+    const submitBtn = document.getElementById('auth-submit-button');
+    submitBtn.disabled = true;
+    try{
+      const pinHash = await hashPin(key, pin);
+      if(authMode === 'setup'){
+        const confirmPin = document.getElementById('login-pin-confirm-input').value;
+        if(pin !== confirmPin){ showAuthError('PINs do not match.'); return; }
+        saveAccount({agentId, pinHash, createdAt: new Date().toISOString()});
+        completeLogin(agentId);
+      }else if(authMode === 'legacy'){
+        const old = legacyAccounts[key];
+        if(!old || old.pinHash !== pinHash){ showAuthError('Agent ID or PIN is incorrect.'); return; }
+        saveAccount(old);
+        legacyAccounts = null;
+        completeLogin(old.agentId || agentId);
+      }else{
+        if(pinHash !== account.pinHash){ showAuthError('Incorrect PIN.'); return; }
+        completeLogin(account.agentId);
+      }
+    }catch(e){
+      showAuthError('Something went wrong. Please try again.');
+    }finally{
+      submitBtn.disabled = false;
+    }
+  }
+  function resetAccount(){
+    if(!account) return;
+    const ok = window.confirm('Reset this tracker’s account?\n\nYou’ll set up the Agent ID and PIN again. Tickets and the work log are kept.');
+    if(!ok) return;
+    const oldId = account.agentId;
+    try{ localStorage.removeItem(ACCOUNT_KEY); }catch(e){}
+    account = null;
+    logEvent('account_reset', null, oldId);
+    renderAuth();
+    document.getElementById('login-agent-input').value = oldId;
+    document.getElementById('login-pin-input').focus();
+  }
+  function completeLogin(name){
+    currentAgent = name;
+    try{ localStorage.setItem(CURRENT_AGENT_KEY, currentAgent); }catch(e){}
+    document.getElementById('login-overlay').style.display = 'none';
+    renderAgentBadge();
+    logEvent('sign_in', null, name);
+  }
+  function showLogin(){
+    renderAuth();
+    document.getElementById('login-overlay').style.display = 'flex';
+    const focusEl = authMode === 'login' ? 'login-pin-input' : 'login-agent-input';
+    setTimeout(()=>{ try{ document.getElementById(focusEl).focus(); }catch(e){} }, 0);
+  }
+  function logoutAgent(){
+    if(currentAgent) logEvent('sign_out', null, currentAgent);
+    currentAgent = null;
+    try{ localStorage.removeItem(CURRENT_AGENT_KEY); }catch(e){}
+    renderAgentBadge();
+    showLogin();
+  }
+  function wireAuthUI(){
+    document.getElementById('auth-submit-button').addEventListener('click', handleAuthSubmit);
+    document.getElementById('auth-reset-button').addEventListener('click', resetAccount);
+    ['login-agent-input','login-pin-input','login-pin-confirm-input'].forEach(id=>{
+      document.getElementById(id).addEventListener('keydown', e=>{ if(e.key === 'Enter') handleAuthSubmit(); });
+    });
+  }
+  function restoreSession(){
+    let saved = null;
+    try{ saved = localStorage.getItem(CURRENT_AGENT_KEY); }catch(e){}
+    // Only resume a session that belongs to this tracker's one account.
+    if(saved && account && normalizeAgentKey(saved) === normalizeAgentKey(account.agentId)){
+      currentAgent = account.agentId;
+      document.getElementById('login-overlay').style.display = 'none';
+      renderAgentBadge();
+    }else{
+      try{ localStorage.removeItem(CURRENT_AGENT_KEY); }catch(e){}
+      showLogin();
+    }
+  }
+
+  function applyTheme(theme){
+    if(theme === 'dark' || theme === 'light'){
+      document.documentElement.setAttribute('data-theme', theme);
+    }else{
+      document.documentElement.removeAttribute('data-theme');
+    }
+    const btn = document.getElementById('theme-toggle-button');
+    const isDark = theme === 'dark' ||
+      (theme !== 'light' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    btn.textContent = isDark ? '☀️ Light mode' : '🌙 Dark mode';
+  }
+  function loadTheme(){
+    let theme = 'system';
+    try{ theme = localStorage.getItem(THEME_KEY) || 'system'; }catch(e){}
+    applyTheme(theme);
+  }
+  function toggleTheme(){
+    const current = document.documentElement.getAttribute('data-theme');
+    const isDarkNow = current === 'dark' ||
+      (!current && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const next = isDarkNow ? 'light' : 'dark';
+    try{ localStorage.setItem(THEME_KEY, next); }catch(e){}
+    applyTheme(next);
+  }
+
+  function fmtDuration(ms){
+    const totalSec = Math.max(0, Math.floor(ms/1000));
+    const h = Math.floor(totalSec/3600);
+    const m = Math.floor((totalSec%3600)/60);
+    const s = totalSec%60;
+    return [h,m,s].map(v=>String(v).padStart(2,'0')).join(':');
+  }
+
+  function elapsedMs(t){
+    let total = t.accumulatedMs || 0;
+    if(t.status === 'running' && t.lastResumeAt){
+      total += Date.now() - t.lastResumeAt;
+    }
+    return total;
+  }
+
+  // ======================================================================================
+  // STORAGE (v4.3)
+  // Tickets and the work log live in IndexedDB: a database built into the browser, saved
+  // on this computer's disk. It has no network features, and the Content-Security-Policy
+  // at the top of this file blocks every network connection anyway.
+  // localStorage (5 MB cap) now only holds a few tiny settings.
+  // ======================================================================================
+  const DB_NAME = 'ticket-tracker-db';
+  const DB_VERSION = 2;
+  const RETENTION_DAYS = 60;                       // browser copy keeps this much finished history
+  const LEGACY_TICKETS_KEY = 'ticket-tracker:tickets';   // v4.2 and earlier, migrated once
+  const LEGACY_LOG_KEY = 'ticket-tracker:event-log';     // v4.2 and earlier, migrated once
+  const PING_KEY = 'ticket-tracker:changed';       // tiny value that tells other open tabs to reload
+  const COMPETENCY_LABEL = 'Competency / Training Readiness';
+  const LOG_HEADER = ['Timestamp','Agent ID','Event','Ticket ID','Customer','Complaint','Elapsed', COMPETENCY_LABEL];
+  // Headers written by earlier versions; upgraded in place so every file has the same columns.
+  const OLD_LOG_HEADERS = [
+    ['Timestamp','Agent ID','Event','Ticket ID','Customer','Complaint','Elapsed','Technician Competency'],   // v4.5
+    ['Timestamp','Agent ID','Event','Ticket ID','Customer','Complaint','Elapsed']                            // v4.4 and earlier
+  ];
+  const DIR_SUPPORTED = typeof window.showDirectoryPicker === 'function';
+  const EMBEDDED = (function(){ try{ return window.self !== window.top; }catch(e){ return true; } })();
+
+  let dbPromise = null;
+  let dbBlocked = false;
+  function idbOpen(){
+    if(dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve, reject)=>{
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = ()=>{
+        const db = req.result;
+        if(!db.objectStoreNames.contains('handles')) db.createObjectStore('handles');
+        if(!db.objectStoreNames.contains('tickets')) db.createObjectStore('tickets', {keyPath:'id'});
+        if(!db.objectStoreNames.contains('events')){
+          const ev = db.createObjectStore('events', {keyPath:'seq', autoIncrement:true});
+          ev.createIndex('written', 'written');   // 0 = not yet in a log file, 1 = written
+        }
+      };
+      // An older version of the tracker open in another tab holds the database open.
+      req.onblocked = ()=>{ dbBlocked = true; renderBanner(); };
+      req.onsuccess = ()=>{
+        dbBlocked = false;
+        const db = req.result;
+        db.onversionchange = ()=> db.close();
+        resolve(db);
+      };
+      req.onerror = ()=> reject(req.error);
+    });
+    dbPromise.catch(()=>{ dbPromise = null; });
+    return dbPromise;
+  }
+  function txDone(tx){
+    return new Promise((res, rej)=>{
+      tx.oncomplete = ()=> res();
+      tx.onerror = ()=> rej(tx.error);
+      tx.onabort = ()=> rej(tx.error || new Error('Transaction aborted'));
+    });
+  }
+  function reqP(r){
+    return new Promise((res, rej)=>{ r.onsuccess = ()=> res(r.result); r.onerror = ()=> rej(r.error); });
+  }
+  async function idbSetHandle(key, h){
+    try{
+      const db = await idbOpen();
+      const tx = db.transaction('handles','readwrite');
+      tx.objectStore('handles').put(h, key);
+      await txDone(tx);
+    }catch(e){}
+  }
+  async function idbGetHandle(key){
+    try{
+      const db = await idbOpen();
+      return (await reqP(db.transaction('handles').objectStore('handles').get(key))) || null;
+    }catch(e){ return null; }
+  }
+
+  // Serializes a read-modify-write cycle across browser tabs (not just within one tab).
+  function withLock(name, fn){
+    if(navigator.locks && navigator.locks.request){
+      return navigator.locks.request(name, fn);
+    }
+    return fn();
+  }
+  function csvLine(row){
+    return row.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(',') + '\r\n';
+  }
+  function pingOtherTabs(){
+    try{ localStorage.setItem(PING_KEY, Date.now() + ':' + Math.random()); }catch(e){}
+  }
+
+  // ---- Write queue: nothing is dropped silently ----
+  // Every save goes through this queue. If a save fails (for example storage is full), it
+  // stays queued, a red banner explains what happened, and it's retried every 30 seconds.
+  const pendingWrites = [];
+  let storageError = '';
+  let flushing = null;
+  function queueWrite(fn){
+    pendingWrites.push(fn);
+    return flushWrites();
+  }
+  function describeStorageError(e){
+    if(e && (e.name === 'QuotaExceededError' || /quota/i.test(e.message || ''))){
+      return 'This computer’s browser storage is full.';
+    }
+    return 'Saving to browser storage failed (' + ((e && (e.message || e.name)) || e) + ').';
+  }
+  function flushWrites(){
+    if(flushing) return flushing;
+    flushing = (async ()=>{
+      while(pendingWrites.length){
+        try{
+          await pendingWrites[0]();
+          pendingWrites.shift();
+          storageError = '';
+        }catch(e){
+          storageError = describeStorageError(e);
+          break;
+        }
+      }
+      flushing = null;
+      renderBanner();
+    })();
+    return flushing;
+  }
+  function renderBanner(){
+    const el = document.getElementById('storage-banner');
+    if(!el) return;
+    let msg = '';
+    if(dbBlocked){
+      msg = 'Another tab is running an older version of the tracker. Close it, and this page will finish loading.';
+    }else if(storageError || pendingWrites.length){
+      msg = `${storageError || 'Saving…'} ${pendingWrites.length} change${pendingWrites.length===1?'':'s'} not saved yet. ` +
+            'Retrying every 30 seconds; keep this page open.';
+    }
+    el.textContent = msg;
+    el.hidden = !msg;
+  }
+  window.addEventListener('beforeunload', e=>{
+    if(pendingWrites.length){ e.preventDefault(); e.returnValue = ''; }
+  });
+
+  // ---- Tickets ----
+  async function loadTickets(){
+    const db = await idbOpen();
+    const all = await reqP(db.transaction('tickets').objectStore('tickets').getAll());
+    tickets = all.sort((a,b)=> (Number(a.id)||0) - (Number(b.id)||0));
+  }
+  function saveTicket(t){
+    const copy = JSON.parse(JSON.stringify(t));   // snapshot of this moment
+    return queueWrite(async ()=>{
+      const db = await idbOpen();
+      const tx = db.transaction('tickets','readwrite');
+      tx.objectStore('tickets').put(copy);
+      await txDone(tx);
+    }).then(pingOtherTabs);
+  }
+  function deleteTicketRecord(id){
+    return queueWrite(async ()=>{
+      const db = await idbOpen();
+      const tx = db.transaction('tickets','readwrite');
+      tx.objectStore('tickets').delete(id);
+      await txDone(tx);
+    }).then(pingOtherTabs);
+  }
+
+  // ---- Work log events ----
+  let eventCount = 0;
+  let unwrittenCount = 0;
+  function monthKey(d){
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;   // local month
+  }
+  function eventRow(r){
+    return [r.ts, r.agent, r.event, r.ticketId, r.customer, r.complaint, r.elapsed, r.competency ?? ''];
+  }
+  function logEvent(event, t, agentOverride){
+    const now = new Date();
+    const rec = {
+      ts: now.toISOString(),
+      month: monthKey(now),
+      agent: agentOverride || (t && t.agentId) || currentAgent || '',
+      event,
+      ticketId: t ? t.id : '',
+      customer: t ? (t.customerName || '') : '',
+      complaint: t ? (t.complaint || '') : '',
+      elapsed: t ? fmtDuration(elapsedMs(t)) : '',
+      competency: t && t.competency != null ? t.competency : '',   // current rating on every ticket row
+      written: 0
+    };
+    eventCount++; unwrittenCount++;
+    renderLogBar();
+    return queueWrite(async ()=>{
+      const db = await idbOpen();
+      const tx = db.transaction('events','readwrite');
+      tx.objectStore('events').add(Object.assign({}, rec));
+      await txDone(tx);
+    }).then(()=>{ pingOtherTabs(); return syncLogFolder(); });
+  }
+  async function refreshCounts(){
+    try{
+      const db = await idbOpen();
+      const st = db.transaction('events').objectStore('events');
+      eventCount = await reqP(st.count());
+      unwrittenCount = await reqP(st.index('written').count(0));
+    }catch(e){}
+  }
+
+  // ---- Monthly log files in a folder you choose ----
+  // One file per month (ticket-work-log-2026-10.csv, ...) so no single file grows forever.
+  // A folder picker never empties existing files, unlike the old Save dialog.
+  let logDirHandle = null;
+  let logDirReady = false;
+  let legacyLogFile = false;
+  let logNotice = '';
+  let logWriteChain = Promise.resolve();
+  // v4.4: file names include the agent, so many agents can share one synced folder
+  // (e.g. a SharePoint/OneDrive folder) without ever writing to each other's files.
+  //   ticket-work-log-JMoyer-2026-10.csv
+  function safeFilePart(s){
+    return String(s || '').trim().replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'unknown';
+  }
+  function logFileName(agent, month){ return `ticket-work-log-${safeFilePart(agent)}-${month}.csv`; }
+
+  function syncLogFolder(){
+    if(!logDirHandle || !logDirReady) return Promise.resolve();
+    logWriteChain = logWriteChain.then(()=> withLock('ticket-tracker-log-folder', async ()=>{
+      try{
+        const db = await idbOpen();
+        const pending = await reqP(db.transaction('events').objectStore('events').index('written').getAll(0));
+        const groups = {};   // one group per output file: agent + month
+        pending.forEach(r=>{
+          const m = r.month || monthKey(new Date(r.ts));
+          const name = logFileName(r.agent, m);
+          (groups[name] = groups[name] || []).push(r);
+        });
+        for(const name of Object.keys(groups).sort()){
+          const rows = groups[name].sort((a,b)=> a.seq - b.seq);
+          const fh = await logDirHandle.getFileHandle(name, {create:true});
+          const file = await fh.getFile();
+          const existing = file.size > 0 ? await file.text() : '';
+          let text = existing || csvLine(LOG_HEADER);
+          // A file started by an older version: replace its header with the current one. Rows from
+          // v4.4 and earlier simply have the rating column empty, which Excel / Power Query read as blank.
+          let headerUpgraded = false;
+          for(const h of OLD_LOG_HEADERS){
+            const oldHeader = csvLine(h);
+            if(text.startsWith(oldHeader)){ text = csvLine(LOG_HEADER) + text.slice(oldHeader.length); headerUpgraded = true; break; }
+          }
+          if(!/\n$/.test(text)) text += '\r\n';
+          let added = 0;
+          for(const r of rows){
+            const line = csvLine(eventRow(r));
+            if(!text.includes(line)){ text += line; added++; }   // never write the same row twice
+          }
+          if(added || !existing || headerUpgraded){
+            const w = await fh.createWritable();
+            await w.write(text);
+            await w.close();
+          }
+          // Only marked as written after the file is safely closed.
+          const tx = db.transaction('events','readwrite');
+          const st = tx.objectStore('events');
+          rows.forEach(r=>{ r.written = 1; st.put(r); });
+          await txDone(tx);
+        }
+        logNotice = '';
+      }catch(e){
+        if(e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) logDirReady = false;
+        logNotice = 'Could not write to the log folder (' + ((e && (e.message || e.name)) || e) +
+                    '). Events are safe in the browser and will be written when it works again.';
+      }
+      await refreshCounts();
+      renderLogBar();
+    }));
+    return logWriteChain;
+  }
+  async function chooseLogFolder(){
+    try{
+      const h = await window.showDirectoryPicker({id:'ticket-tracker-logs', mode:'readwrite'});
+      const perm = await h.requestPermission({mode:'readwrite'});
+      if(perm !== 'granted'){ logNotice = 'Write permission was not granted for that folder.'; renderLogBar(); return; }
+      logDirHandle = h;
+      logDirReady = true;
+      logNotice = '';
+      await idbSetHandle('logDir', h);
+      await syncLogFolder();
+      renderLogBar();
+    }catch(e){
+      if(e && e.name === 'AbortError') return;   // user closed the picker
+      logNotice = (e && e.name === 'SecurityError')
+        ? 'The browser blocked the folder picker because this page is embedded in another site. Open the .html file directly in Chrome or Edge.'
+        : 'Could not open the folder picker: ' + ((e && e.message) || e);
+      renderLogBar();
+    }
+  }
+  async function reconnectLogFolder(){
+    try{
+      const perm = await logDirHandle.requestPermission({mode:'readwrite'});
+      logDirReady = perm === 'granted';
+      if(logDirReady){ logNotice = ''; await syncLogFolder(); }
+    }catch(e){ logDirReady = false; }
+    renderLogBar();
+  }
+  async function restoreLogFolder(){
+    if(!DIR_SUPPORTED) return;
+    const h = await idbGetHandle('logDir');
+    if(!h){
+      legacyLogFile = !!(await idbGetHandle('log'));   // v4.2 single-file setup
+      return;
+    }
+    logDirHandle = h;
+    try{
+      const perm = await h.queryPermission({mode:'readwrite'});
+      logDirReady = perm === 'granted';
+    }catch(e){ logDirReady = false; }
+  }
+  async function downloadLog(){
+    let all = [];
+    try{
+      const db = await idbOpen();
+      all = await reqP(db.transaction('events').objectStore('events').getAll());
+    }catch(e){ return; }
+    if(!all.length) return;
+    const csv = csvLine(LOG_HEADER) + all.sort((a,b)=>a.seq-b.seq).map(r=>csvLine(eventRow(r))).join('');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ticket-work-log-browser-copy-${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(()=> URL.revokeObjectURL(url), 1000);
+  }
+  function renderLogBar(){
+    const bar = document.getElementById('log-bar');
+    if(!bar) return;
+    bar.innerHTML = '';
+    const status = document.createElement('span');
+    status.className = 'count';
+    const waiting = unwrittenCount > 0 ? ` · ${unwrittenCount} waiting to be written` : '';
+    if(!DIR_SUPPORTED){
+      status.textContent = `Work log: ${eventCount} events saved in this browser. Monthly log files need Chrome or Edge.`;
+    }else if(logDirHandle && logDirReady){
+      status.textContent = logNotice || `Logging to folder “${logDirHandle.name}” · files named ticket-work-log-${safeFilePart(currentAgent || (account && account.agentId))}-YYYY-MM.csv${waiting}`;
+      if(logNotice) status.classList.add('warn');
+    }else if(logDirHandle){
+      status.textContent = `Log folder “${logDirHandle.name}” needs permission${waiting}. Click Reconnect.`;
+      status.classList.add('warn');
+    }else if(logNotice){
+      status.textContent = logNotice;
+      status.classList.add('warn');
+    }else if(EMBEDDED){
+      status.textContent = 'File logging is blocked while this page is embedded. Open the .html file directly in Chrome or Edge. Events are still saved in this browser.';
+    }else if(legacyLogFile){
+      status.textContent = 'The work log is now saved as one file per agent per month. Choose a folder for it (a shared/synced folder works; your old ticket-work-log.csv is left untouched).';
+      status.classList.add('warn');
+    }else{
+      status.textContent = `No log folder chosen — ${eventCount} events kept in this browser only.`;
+    }
+    bar.appendChild(status);
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+    if(DIR_SUPPORTED && !EMBEDDED){
+      if(logDirHandle && !logDirReady) actions.appendChild(makeBtn('Reconnect','act-start', reconnectLogFolder));
+      actions.appendChild(makeBtn(logDirHandle ? 'Change log folder' : 'Choose log folder','act-remove', chooseLogFolder));
+    }
+    actions.appendChild(makeBtn('Download browser copy','act-remove', downloadLog));
+    bar.appendChild(actions);
+  }
+
+  // ---- One-time move of v4.2 data out of localStorage ----
+  async function migrateFromLocalStorage(){
+    await withLock('ticket-tracker-migrate', async ()=>{
+      let oldTickets = null, oldLog = null;
+      try{ oldTickets = JSON.parse(localStorage.getItem(LEGACY_TICKETS_KEY) || 'null'); }catch(e){}
+      try{ oldLog = JSON.parse(localStorage.getItem(LEGACY_LOG_KEY) || 'null'); }catch(e){}
+      if(!Array.isArray(oldTickets) && !Array.isArray(oldLog)) return;
+      const db = await idbOpen();
+      const tx = db.transaction(['tickets','events'],'readwrite');
+      (oldTickets || []).forEach(t=>{ if(t && t.id != null) tx.objectStore('tickets').put(t); });
+      (oldLog || []).forEach(r=>{
+        if(!Array.isArray(r)) return;
+        const d = new Date(r[0]);
+        tx.objectStore('events').add({
+          ts: r[0], month: isNaN(d) ? 'unknown' : monthKey(d), agent: r[1], event: r[2],
+          ticketId: r[3], customer: r[4], complaint: r[5], elapsed: r[6], written: 0
+        });
+      });
+      await txDone(tx);
+      // Only removed after the database confirmed the copy, freeing the 5 MB space.
+      try{ localStorage.removeItem(LEGACY_TICKETS_KEY); localStorage.removeItem(LEGACY_LOG_KEY); }catch(e){}
+    });
+  }
+
+  // ---- Keep the browser copy small ----
+  // Finished tickets older than RETENTION_DAYS are removed from the browser only when a log
+  // folder is set up, and log events only once they're confirmed written to a monthly file.
+  // Nothing that exists only in the browser is ever pruned.
+  async function pruneOld(){
+    const cutoff = Date.now() - RETENTION_DAYS * 864e5;
+    const db = await idbOpen();
+    const tx = db.transaction(['tickets','events'],'readwrite');
+    if(logDirHandle){
+      tx.objectStore('tickets').openCursor().onsuccess = e=>{
+        const c = e.target.result; if(!c) return;
+        const t = c.value;
+        if(t.status === 'finished' && t.finishedAt && Date.parse(t.finishedAt) < cutoff) c.delete();
+        c.continue();
+      };
+    }
+    tx.objectStore('events').openCursor().onsuccess = e=>{
+      const c = e.target.result; if(!c) return;
+      const r = c.value;
+      if(r.written === 1 && Date.parse(r.ts) < cutoff) c.delete();
+      c.continue();
+    };
+    await txDone(tx);
+  }
+  async function highestLoggedTicketId(){
+    let max = 0;
+    try{
+      const db = await idbOpen();
+      await new Promise((res, rej)=>{
+        const r = db.transaction('events').objectStore('events').openCursor();
+        r.onsuccess = e=>{ const c = e.target.result; if(!c) return res(); max = Math.max(max, Number(c.value.ticketId) || 0); c.continue(); };
+        r.onerror = ()=> rej(r.error);
+      });
+    }catch(e){}
+    return max;
+  }
+
+  // Retry anything stuck, and keep the log folder caught up.
+  setInterval(()=>{
+    if(pendingWrites.length) flushWrites();
+    if(unwrittenCount > 0 && logDirReady) syncLogFolder();
+  }, 30000);
+
+  function startTicket(t){
+    if(t.status === 'finished') return;
+    const wasPaused = t.status === 'paused';
+    t.status = 'running';
+    t.lastResumeAt = Date.now();
+    if(!t.startedAt) t.startedAt = new Date().toISOString();
+    logEvent(wasPaused ? 'ticket_resumed' : 'ticket_started', t);
+    saveTicket(t); render();
+  }
+  function pauseTicket(t){
+    if(t.status !== 'running') return;
+    t.accumulatedMs = elapsedMs(t);
+    t.lastResumeAt = null;
+    t.status = 'paused';
+    logEvent('ticket_paused', t);
+    saveTicket(t); render();
+  }
+  function finishTicket(t){
+    if(t.status === 'running'){
+      t.accumulatedMs = elapsedMs(t);
+      t.lastResumeAt = null;
+    }
+    t.status = 'finished';
+    t.finishedAt = new Date().toISOString();
+    logEvent('ticket_finished', t);
+    saveTicket(t); render();
+  }
+  function removeTicket(id){
+    const t = tickets.find(x => x.id === id);
+    if(t) logEvent('ticket_deleted', t);
+    tickets = tickets.filter(t=>t.id !== id);
+    deleteTicketRecord(id); render();
+  }
+  function saveEdit(t, customerName, category, complaint){
+    t = tickets.find(x => x.id === t.id) || t; // use the current copy if another tab synced in
+    t.customerName = customerName.trim();
+    t.category = category.trim();
+    ensureCategory(t.category);
+    t.complaint = complaint.trim();
+    editingId = null;
+    logEvent('ticket_edited', t);
+    saveTicket(t); render();
+  }
+  // Competency / Training Readiness: blank until rated, then 0–5. Every change is recorded in the log.
+  const COMPETENCY_LEVELS = [0,1,2,3,4,5];
+  function setCompetency(t, value){
+    t = tickets.find(x => x.id === t.id) || t;
+    const v = value === '' ? null : Number(value);
+    if(t.competency === v || (t.competency == null && v == null)) return;
+    t.competency = v;
+    logEvent(v == null ? 'competency_cleared' : 'competency_rated', t);
+    saveTicket(t);
+  }
+  function cancelEdit(){
+    editingId = null;
+    render();
+  }
+
+  function statusLabel(s){
+    return {notstarted:'Not started', running:'Running', paused:'Paused', finished:'Finished'}[s] || s;
+  }
+
+  function renderTabs(){
+    const activeBtn = document.getElementById('tab-active');
+    const finishedBtn = document.getElementById('tab-finished');
+    const activeCount = tickets.filter(t => t.status !== 'finished').length;
+    const finishedCount = tickets.filter(t => t.status === 'finished').length;
+    activeBtn.textContent = `In Progress (${activeCount})`;
+    finishedBtn.textContent = `Finished (${finishedCount})`;
+    activeBtn.classList.toggle('active', activeTab === 'active');
+    finishedBtn.classList.toggle('active', activeTab === 'finished');
+  }
+
+  function render(){
+    const list = document.getElementById('ticket-list');
+    Object.values(intervalIds).forEach(clearInterval);
+    for(const k in intervalIds) delete intervalIds[k];
+
+    renderTabs();
+
+    const visible = tickets.filter(t => activeTab === 'finished' ? t.status === 'finished' : t.status !== 'finished');
+
+    document.getElementById('ticket-count').textContent =
+      visible.length ? `${visible.length} ticket${visible.length===1?'':'s'}` : '';
+
+    if(visible.length === 0){
+      list.innerHTML = activeTab === 'finished'
+        ? '<div class="empty">No finished tickets yet.</div>'
+        : '<div class="empty">No tickets in progress. Add a ticket above to start one.</div>';
+      return;
+    }
+
+    list.innerHTML = '';
+    visible.slice().reverse().forEach(t=>{
+      const card = document.createElement('div');
+      card.className = 'card';
+
+      if(editingId === t.id){
+        const form = document.createElement('div');
+        form.className = 'edit-form';
+        form.innerHTML = `
+          <input class="edit-customer" type="text" value="${escapeAttr(t.customerName || '')}" placeholder="Customer name" list="ship-list" autocomplete="off">
+          <input class="edit-category" type="text" value="${escapeAttr(t.category || '')}" placeholder="Category" list="category-list" autocomplete="off">
+          <textarea class="edit-complaint" placeholder="Complaint / issue description">${escapeHtml(t.complaint || '')}</textarea>
+        `;
+        card.appendChild(form);
+
+        const editActions = document.createElement('div');
+        editActions.className = 'actions';
+        editActions.appendChild(makeBtn('Save','act-start', ()=>{
+          saveEdit(
+            t,
+            form.querySelector('.edit-customer').value,
+            form.querySelector('.edit-category').value,
+            form.querySelector('.edit-complaint').value
+          );
+        }));
+        editActions.appendChild(makeBtn('Cancel','act-remove', cancelEdit));
+        card.appendChild(editActions);
+
+        list.appendChild(card);
+        return;
+      }
+
+      const top = document.createElement('div');
+      top.className = 'card-top';
+      top.innerHTML = `
+        <div>
+          <div class="card-title">Ticket ${t.id}</div>
+          <div class="card-agent">Agent: ${escapeHtml(t.agentId)}</div>
+          ${t.customerName ? `<div class="card-customer">Customer: ${escapeHtml(t.customerName)}</div>` : ''}
+          ${t.category ? `<div class="card-customer">Category: ${escapeHtml(t.category)}</div>` : ''}
+        </div>
+        <span class="status ${t.status}">${statusLabel(t.status)}</span>
+      `;
+      card.appendChild(top);
+      if(t.complaint){
+        const complaintEl = document.createElement('div');
+        complaintEl.className = 'card-complaint';
+        complaintEl.textContent = t.complaint;
+        complaintEl.title = t.complaint; // full text on hover when it's cut to 3 lines
+        card.appendChild(complaintEl);
+      }
+
+      const timer = document.createElement('div');
+      timer.className = 'timer';
+      timer.textContent = fmtDuration(elapsedMs(t));
+      card.appendChild(timer);
+
+      const comp = document.createElement('label');
+      comp.className = 'competency' + (t.competency == null ? ' unrated' : '');
+      const compText = document.createElement('span');
+      compText.textContent = COMPETENCY_LABEL;
+      const sel = document.createElement('select');
+      sel.setAttribute('aria-label', `${COMPETENCY_LABEL} for ticket ${t.id}`);
+      sel.innerHTML = '<option value="">Not rated</option>' +
+        COMPETENCY_LEVELS.map(n => `<option value="${n}">${n}</option>`).join('');
+      sel.value = t.competency == null ? '' : String(t.competency);
+      sel.addEventListener('change', ()=>{
+        comp.classList.toggle('unrated', sel.value === '');
+        setCompetency(t, sel.value);
+      });
+      comp.appendChild(compText);
+      comp.appendChild(sel);
+      card.appendChild(comp);
+
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+
+      if(t.status === 'notstarted'){
+        actions.appendChild(makeBtn('Start','act-start', ()=>startTicket(t)));
+      }
+      if(t.status === 'running'){
+        actions.appendChild(makeBtn('Pause','act-pause', ()=>pauseTicket(t)));
+        actions.appendChild(makeBtn('Finish','act-finish', ()=>finishTicket(t)));
+      }
+      if(t.status === 'paused'){
+        actions.appendChild(makeBtn('Resume','act-start', ()=>startTicket(t)));
+        actions.appendChild(makeBtn('Finish','act-finish', ()=>finishTicket(t)));
+      }
+      if(t.status === 'finished'){
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        meta.textContent = `Total time: ${fmtDuration(t.accumulatedMs || 0)}`;
+        card.appendChild(meta);
+      }
+      actions.appendChild(makeBtn('Edit','act-edit', ()=>{ editingId = t.id; render(); }));
+      actions.appendChild(makeBtn('Remove','act-remove', ()=>removeTicket(t.id)));
+      card.appendChild(actions);
+
+      list.appendChild(card);
+
+      if(t.status === 'running'){
+        intervalIds[t.id] = setInterval(()=>{
+          timer.textContent = fmtDuration(elapsedMs(t));
+        }, 1000);
+      }
+    });
+  }
+
+  function makeBtn(label, cls, onClick){
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.className = cls;
+    b.onclick = onClick;
+    return b;
+  }
+
+  function escapeHtml(s){
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function escapeAttr(s){
+    return escapeHtml(s);
+  }
+
+  // FIX: the old version used (highest current ticket ID + 1). Removing the newest ticket, or
+  // the browser clearing its data, made IDs restart and reuse numbers already in the log,
+  // so new log rows looked like they overwrote old tickets. IDs now only ever go up.
+  const NEXT_ID_KEY = 'ticket-tracker:next-id';
+  let maxLoggedTicketId = 0;   // filled in at startup from the log
+  function nextId(){
+    let stored = 0;
+    try{ stored = parseInt(localStorage.getItem(NEXT_ID_KEY), 10) || 0; }catch(e){}
+    const maxTicket = tickets.reduce((m,t)=>Math.max(m, Number(t.id) || 0), 0);
+    const id = Math.max(stored, maxTicket + 1, maxLoggedTicketId + 1, 1);
+    try{ localStorage.setItem(NEXT_ID_KEY, String(id + 1)); }catch(e){}
+    return id;
+  }
+
+  // FIX: keep every open tab in step. Previously each tab held its own copy of tickets, the
+  // log and accounts, and whichever tab saved last erased the other tab's changes.
+  window.addEventListener('storage', e=>{
+    if(e.key === PING_KEY){
+      // Another tab saved something: reload from the database.
+      loadTickets().then(()=>{ if(editingId === null) render(); else renderTabs(); }).catch(()=>{});
+      refreshCounts().then(renderLogBar);
+    }
+    else if(e.key === ACCOUNT_KEY){
+      loadAccount();
+      // Account was reset in another tab: sign this tab out too.
+      if(currentAgent && (!account || normalizeAgentKey(account.agentId) !== normalizeAgentKey(currentAgent))){
+        currentAgent = null; renderAgentBadge(); showLogin();
+      }else if(document.getElementById('login-overlay').style.display !== 'none'){ renderAuth(); }
+    }
+    else if(e.key === CATEGORIES_KEY){ try{ categories = JSON.parse(e.newValue) || categories; }catch(_){} populateCategoryList(); }
+  });
+
+  document.getElementById('theme-toggle-button').addEventListener('click', toggleTheme);
+  document.getElementById('tab-active').addEventListener('click', ()=>{ activeTab = 'active'; render(); });
+  document.getElementById('tab-finished').addEventListener('click', ()=>{ activeTab = 'finished'; render(); });
+
+  document.getElementById('new-ticket-button').addEventListener('click', ()=>{
+    if(!currentAgent){ logoutAgent(); return; }
+    const customerInput = document.getElementById('customer-input');
+    const complaintInput = document.getElementById('complaint-input');
+    const categoryInput = document.getElementById('category-input');
+    ensureCategory(categoryInput.value);
+    const now = Date.now();
+    tickets.push({
+      id: nextId(),
+      agentId: currentAgent,
+      customerName: customerInput.value.trim(),
+      category: categoryInput.value.trim(),
+      complaint: complaintInput.value.trim(),
+      status: 'running',
+      accumulatedMs: 0,
+      lastResumeAt: now,
+      startedAt: new Date(now).toISOString(),
+      finishedAt: null
+    });
+    customerInput.value = '';
+    categoryInput.value = '';
+    complaintInput.value = '';
+    logEvent('ticket_created', tickets[tickets.length - 1]);
+    saveTicket(tickets[tickets.length - 1]); render();
+  });
+  document.getElementById('export-button').addEventListener('click', ()=>{
+    if(tickets.length === 0) return;
+    const rows = [['Ticket ID','Agent ID','Customer Name','Category','Complaint','Status','Started At','Finished At','Duration', COMPETENCY_LABEL]];
+    tickets.forEach(t=>{
+      rows.push([
+        t.id, t.agentId, t.customerName || '', t.category || '', t.complaint || '', statusLabel(t.status),
+        t.startedAt || '', t.finishedAt || '',
+        fmtDuration(elapsedMs(t)),
+        t.competency == null ? '' : t.competency
+      ]);
+    });
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tickets-${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
+  async function initApp(){
+    loadTheme();
+    populateShipList();
+    loadCategories();
+    loadAccount();
+    wireAuthUI();
+    restoreSession();
+    renderLogBar();
+    try{
+      // Ask the browser not to clear this data when the disk runs low (local setting, no network).
+      if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
+      await migrateFromLocalStorage();
+      await restoreLogFolder();
+      await pruneOld();
+      await loadTickets();
+      maxLoggedTicketId = await highestLoggedTicketId();
+      await refreshCounts();
+    }catch(e){
+      storageError = describeStorageError(e);
+      renderBanner();
+    }
+    renderLogBar();
+    render();
+    syncLogFolder();
+  }
+  initApp();
+})();
+</script>
+</body>
+</html>
