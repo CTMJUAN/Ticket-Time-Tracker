@@ -490,8 +490,8 @@ details summary{cursor:pointer; font-size:0.84rem; color:var(--sub);}
         t.timeApplied = (t.live && t.live.adminTimeVersion && Date.parse(t.live.adminTimeVersion) >= tAt) ||
                         t.events.some(e => e.event === 'admin_correction_applied' && e.tsMs >= tAt);
         if(!t.timeApplied){
-          if(Number.isFinite(c.deltaMs)){
-            // The agent's tracker (v4.11+) adds the difference to whatever it has by then.
+          if(hasDelta(c)){
+            // The agent's tracker (v4.12+) adds the difference to whatever it has by then.
             t.cur.totalMs = Math.max(0, L.totalMs + c.deltaMs);
           }else{
             // Saved by an older admin page: the total as of that save.
@@ -504,7 +504,7 @@ details summary{cursor:pointer; font-size:0.84rem; color:var(--sub);}
       if(c.deleted === true) t.flags.deleted = true;
       if(t.flags.removedByAgent && c.restored === true) t.flags.removedByAgent = false;
       const o = c.original || {};
-      t.flags.edited = adminFields(t).some(k => k === 'totalMs' && Number.isFinite(c.adjustMs) ? !same(k, c.adjustMs, 0) : (k in o && !same(k, o[k], t.cur[k])));
+      t.flags.edited = adminFields(t).some(k => k === 'totalMs' && hasDelta(c) && Number.isFinite(c.adjustMs) ? !same(k, c.adjustMs, 0) : (k in o && !same(k, o[k], t.cur[k])));
     }
     t.display = t.flags.deleted ? 'deleted' : L.status === 'removed' ? 'removed' : t.cur.status;
   }
@@ -515,6 +515,10 @@ details summary{cursor:pointer; font-size:0.84rem; color:var(--sub);}
     if(Number.isFinite(c.totalMs) || Number.isFinite(c.deltaMs)) ks.push('totalMs');
     return ks;
   }
+  // Whether the time difference belongs to the latest time edit. An admin page from before the
+  // difference existed (or the Ticket Portal before 1.2) changes only totalMs and timeEditedAt, which
+  // leaves an older difference behind; that edit is then a plain total, as those pages meant it.
+  function hasDelta(c){ return !!c && Number.isFinite(c.deltaMs) && typeof c.deltaAt === 'string' && c.deltaAt === c.timeEditedAt; }
   // The agent's own tracker total right now, including any admin change it has already applied.
   function agentNowMs(t){
     const lt = t.live;
@@ -524,7 +528,7 @@ details summary{cursor:pointer; font-size:0.84rem; color:var(--sub);}
   // How much of the admin's time changes the agent's tracker already carries.
   function appliedAdjustMs(t){
     const c = t.corr;
-    if(!c || !Number.isFinite(c.adjustMs)) return 0;
+    if(!hasDelta(c) || !Number.isFinite(c.adjustMs)) return 0;
     return c.adjustMs - (t.timeApplied ? 0 : (c.deltaMs || 0));
   }
   // Time edits are stored as a difference from the agent's own total, so time the agent works
@@ -533,11 +537,11 @@ details summary{cursor:pointer; font-size:0.84rem; color:var(--sub);}
     e.deltaMs = totalMs - agentNowMs(t);
     e.adjustMs = appliedAdjustMs(t) + e.deltaMs;
     e.totalMs = totalMs;
-    e.timeEditedAt = now;
+    e.timeEditedAt = e.deltaAt = now;
   }
   // The total without any admin time changes, or null for edits from an older admin page.
   function agentOwnMs(t){
-    return t.corr && Number.isFinite(t.corr.adjustMs) ? Math.max(0, agentNowMs(t) - appliedAdjustMs(t)) : null;
+    return hasDelta(t.corr) && Number.isFinite(t.corr.adjustMs) ? Math.max(0, agentNowMs(t) - appliedAdjustMs(t)) : null;
   }
   function same(k, a, b){
     if(k === 'totalMs') return Math.floor((a || 0) / 1000) === Math.floor((b || 0) / 1000);
