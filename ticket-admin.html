@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<!-- Security rule: the browser itself blocks every network connection from this page.
+     Everything the admin page needs is inside this one file; it only reads and writes
+     files in the folder you choose. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; font-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; manifest-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ticket Tracker Admin 1.0</title>
+<style>
+:root{
+  --bg:#f6f7f5; --panel:#ffffff; --ink:#16211f; --sub:#5a6663;
+  --line:#dde3e0; --accent:#2f6e5c; --accent-ink:#ffffff; --soft:#eef3f1;
+  --warn:#b8860b; --danger:#a13a3a; --done:#3d6b45;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#12181a; --panel:#1a2225; --ink:#e7ece9; --sub:#93a0a0;
+    --line:#2b3538; --accent:#4c9c82; --accent-ink:#0c1614; --soft:#20292c;
+    --warn:#e0b030; --danger:#d16a6a; --done:#63b46f;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#12181a; --panel:#1a2225; --ink:#e7ece9; --sub:#93a0a0;
+  --line:#2b3538; --accent:#4c9c82; --accent-ink:#0c1614; --soft:#20292c;
+  --warn:#e0b030; --danger:#d16a6a; --done:#63b46f;
+}
+*{box-sizing:border-box;}
+body{margin:0; background:var(--bg); color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; padding:24px 20px 64px;}
+.wrap{max-width:1320px; margin:0 auto;}
+h1{font-size:1.4rem; margin:0; letter-spacing:-0.01em;}
+.sub{color:var(--sub); font-size:0.85rem; margin:4px 0 0;}
+button{font-family:inherit; font-size:0.86rem; border:none; border-radius:8px; padding:8px 14px; cursor:pointer;}
+button:hover{opacity:0.88;}
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible{outline:2px solid var(--accent); outline-offset:1px;}
+button:disabled{opacity:0.45; cursor:default;}
+.btn-primary{background:var(--accent); color:var(--accent-ink); font-weight:600;}
+.btn-ghost{background:transparent; color:var(--ink); border:1px solid var(--line);}
+.btn-danger{background:transparent; color:var(--danger); border:1px solid var(--danger);}
+input, select, textarea{font:inherit; font-size:0.88rem; color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:7px; padding:7px 9px; min-width:0;}
+textarea{resize:vertical; min-height:70px; width:100%;}
+label.field{display:flex; flex-direction:column; gap:4px; font-size:0.78rem; color:var(--sub);}
+label.field > input, label.field > select, label.field > textarea{color:var(--ink);}
+
+.head{display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:16px;}
+.head-actions{display:flex; gap:8px; flex-wrap:wrap;}
+.banner{border-radius:8px; padding:10px 14px; margin:0 0 14px; font-size:0.86rem; line-height:1.4; background:var(--panel); border:1px solid var(--line); border-left:4px solid var(--accent);}
+.banner.err{border-left-color:var(--danger);}
+.banner[hidden]{display:none;}
+
+.tabs{display:flex; gap:4px; border-bottom:1px solid var(--line); margin-bottom:14px; overflow-x:auto;}
+.tab{background:transparent; border-radius:0; color:var(--sub); padding:9px 4px; margin-right:18px; border-bottom:2px solid transparent; white-space:nowrap;}
+.tab.active{color:var(--ink); font-weight:600; border-bottom-color:var(--accent);}
+
+.filters{display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 170px), 1fr)); gap:10px; margin-bottom:14px; align-items:end;}
+.filters .wide{grid-column:span 2;}
+@media (max-width:520px){ .filters .wide{grid-column:span 1;} }
+.check{display:flex; align-items:center; gap:6px; font-size:0.82rem; color:var(--sub); padding-bottom:8px;}
+
+.toolbar{display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;}
+.toolbar .actions{display:flex; gap:8px; flex-wrap:wrap;}
+.count{color:var(--sub); font-size:0.85rem;}
+
+.table-wrap{overflow-x:auto; background:var(--panel); border:1px solid var(--line); border-radius:10px;}
+table{border-collapse:collapse; width:100%; font-size:0.84rem;}
+th, td{text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top;}
+th{font-size:0.76rem; color:var(--sub); font-weight:600; white-space:nowrap; position:sticky; top:0; background:var(--panel);}
+th.sortable{cursor:pointer; user-select:none;}
+th.sorted::after{content:" ▾";} th.sorted.asc::after{content:" ▴";}
+tbody tr:last-child td{border-bottom:none;}
+tbody tr.clickable{cursor:pointer;}
+tbody tr.clickable:hover td{background:var(--soft);}
+td.num, th.num{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;}
+td.clip{max-width:260px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+td.nowrap{white-space:nowrap;}
+.muted{color:var(--sub);}
+.tag{display:inline-block; font-size:0.7rem; font-weight:600; padding:2px 7px; border-radius:20px; white-space:nowrap;}
+.tag.running{background:var(--accent); color:var(--accent-ink);}
+.tag.paused{background:var(--warn); color:#fff;}
+.tag.finished{background:var(--done); color:#fff;}
+.tag.removed, .tag.deleted{background:var(--line); color:var(--sub);}
+.tag.added{background:transparent; color:var(--accent); border:1px solid var(--accent);}
+.tag.edited{background:transparent; color:var(--warn); border:1px solid var(--warn); margin-left:4px;}
+tr.struck td{color:var(--sub); text-decoration:line-through;}
+tr.struck td:first-child, tr.struck td.keep{text-decoration:none;}
+.pager{display:flex; justify-content:center; align-items:center; gap:10px; margin:12px 0; font-size:0.84rem; color:var(--sub);}
+.empty{color:var(--sub); text-align:center; padding:28px; font-size:0.9rem;}
+
+.kpis{display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 170px), 1fr)); gap:10px; margin-bottom:16px;}
+.kpi{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px;}
+.kpi .v{font-size:1.35rem; font-weight:650; font-variant-numeric:tabular-nums;}
+.kpi .l{font-size:0.78rem; color:var(--sub); margin-top:2px;}
+.bar{height:8px; border-radius:4px; background:var(--accent); min-width:2px;}
+.bar-cell{width:28%; min-width:120px;}
+
+.history-item{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 14px; margin-bottom:8px; font-size:0.85rem;}
+.history-item .when{color:var(--sub); font-size:0.78rem;}
+.change{font-size:0.82rem; margin-top:3px;}
+.change .old{color:var(--danger); text-decoration:line-through; overflow-wrap:anywhere;}
+.change .new{color:var(--done); overflow-wrap:anywhere;}
+
+dialog{border:1px solid var(--line); border-radius:12px; background:var(--panel); color:var(--ink); padding:0; width:min(760px, calc(100vw - 32px)); max-height:calc(100vh - 32px);}
+dialog::backdrop{background:rgba(0,0,0,0.45);}
+.dlg{padding:20px 22px; display:flex; flex-direction:column; gap:12px;}
+.dlg h2{margin:0; font-size:1.1rem;}
+.dlg .grid2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+@media (max-width:560px){ .dlg .grid2{grid-template-columns:1fr;} }
+.dlg .orig{font-size:0.74rem; color:var(--warn);}
+.dlg .row-actions{display:flex; gap:8px; flex-wrap:wrap; justify-content:space-between; align-items:center;}
+.dlg .row-actions .right{display:flex; gap:8px; flex-wrap:wrap;}
+.dlg .err{color:var(--danger); font-size:0.82rem;}
+.dlg .hint{color:var(--sub); font-size:0.78rem; line-height:1.4;}
+details{border:1px solid var(--line); border-radius:8px; padding:8px 12px;}
+details summary{cursor:pointer; font-size:0.84rem; color:var(--sub);}
+.mini{font-size:0.78rem;} .mini td, .mini th{padding:5px 8px;}
+
+.overlay{position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; padding:20px; z-index:50;}
+.overlay[hidden]{display:none;}
+.box{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:26px 24px; width:100%; max-width:420px; display:flex; flex-direction:column; gap:12px;}
+.box h2{margin:0; font-size:1.2rem;}
+.box p{margin:0; color:var(--sub); font-size:0.88rem; line-height:1.45;}
+.box .note{font-size:0.76rem;}
+</style>
+</head>
+<body>
+<div class="overlay" id="start">
+  <div class="box">
+    <h2>Ticket tracker admin</h2>
+    <p>Open the shared folder that holds your agents’ <b>ticket-work-log</b> files to see and correct every agent’s work log.</p>
+    <label class="field">Your name (shown in the change history)<input id="admin-name" type="text" autocomplete="off" maxlength="60" placeholder="e.g. J. Moyer"></label>
+    <button class="btn-primary" id="open-folder" type="button">Open shared log folder</button>
+    <button class="btn-ghost" id="reconnect-folder" type="button" hidden></button>
+    <div id="start-error" class="dlg-err" style="color:var(--danger); font-size:0.84rem;" hidden></div>
+    <p class="note">Nothing leaves this computer: the page only reads and writes files in the folder you choose. Agents’ own log files are never changed — your edits are kept in <b>ticket-admin-corrections.json</b> in that folder.</p>
+  </div>
+</div>
+
+<div class="wrap" id="app" inert>
+  <div class="head">
+    <div>
+      <h1>Ticket tracker admin</h1>
+      <p class="sub" id="folder-line"></p>
+    </div>
+    <div class="head-actions">
+      <button class="btn-ghost" id="refresh" type="button">↻ Refresh</button>
+      <button class="btn-ghost" id="change-folder" type="button">Change folder</button>
+      <button class="btn-ghost" id="theme" type="button">🌙 Dark mode</button>
+    </div>
+  </div>
+  <div class="banner" id="banner" role="status" hidden></div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-tab="tickets" type="button">Tickets</button>
+    <button class="tab" data-tab="summary" type="button">Summary</button>
+    <button class="tab" data-tab="agents" type="button">Agents</button>
+    <button class="tab" data-tab="history" type="button">Change history</button>
+  </div>
+
+  <div class="filters" id="filters">
+    <label class="field wide">Search<input id="f-search" type="search" placeholder="Customer, complaint, category, ticket…"></label>
+    <label class="field">Agent<select id="f-agent"></select></label>
+    <label class="field">Category<select id="f-category"></select></label>
+    <label class="field">Status<select id="f-status">
+      <option value="all">All (not removed)</option>
+      <option value="open">Open (running + paused)</option>
+      <option value="running">Running</option>
+      <option value="paused">Paused</option>
+      <option value="finished">Finished</option>
+      <option value="added">Added by admin</option>
+      <option value="edited">Edited by admin</option>
+      <option value="removed">Removed by agent</option>
+      <option value="deleted">Deleted by admin</option>
+      <option value="everything">Everything</option>
+    </select></label>
+    <label class="field">Started from<input id="f-from" type="date"></label>
+    <label class="field">Started to<input id="f-to" type="date"></label>
+    <button class="btn-ghost" id="f-clear" type="button">Clear filters</button>
+  </div>
+
+  <section id="tab-tickets">
+    <div class="toolbar">
+      <span class="count" id="t-count"></span>
+      <div class="actions">
+        <button class="btn-primary" id="add-ticket" type="button">+ Add ticket</button>
+        <button class="btn-ghost" id="dl-filtered" type="button">Download this list</button>
+        <button class="btn-ghost" id="dl-tickets" type="button">Download corrected tickets</button>
+        <button class="btn-ghost" id="dl-log" type="button">Download corrected work log</button>
+      </div>
+    </div>
+    <div class="table-wrap"><table id="t-table"><thead></thead><tbody></tbody></table></div>
+    <div class="pager" id="t-pager"></div>
+  </section>
+
+  <section id="tab-summary" hidden>
+    <div class="kpis" id="kpis"></div>
+    <div class="toolbar">
+      <label class="field" style="flex-direction:row; align-items:center; gap:8px;">Group by
+        <select id="group-by"><option value="agent">Agent</option><option value="category">Category</option><option value="customer">Customer</option><option value="month">Month started</option></select>
+      </label>
+      <span class="count">Totals use the filters above and your corrections. Removed and deleted tickets aren’t counted.</span>
+    </div>
+    <div class="table-wrap"><table id="s-table"><thead></thead><tbody></tbody></table></div>
+  </section>
+
+  <section id="tab-agents" hidden>
+    <div class="table-wrap"><table id="a-table"><thead></thead><tbody></tbody></table></div>
+    <p class="count" style="margin-top:10px;">“Reset PIN” sets a new PIN in the agent’s account file in this folder. Their tracker (v4.10 or later) accepts it the next time they sign in.</p>
+  </section>
+
+  <section id="tab-history" hidden>
+    <div id="h-list"></div>
+  </section>
+</div>
+
+<dialog id="editor"><div class="dlg" id="editor-body"></div></dialog>
+<dialog id="pin-dialog"><div class="dlg" id="pin-body"></div></dialog>
+
+<script>
+(function(){
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const COMPETENCY_LABEL = 'Competency / Training Readiness';
+  const ADMIN_FILE = 'ticket-admin-corrections.json';
+  const EXPORT_TICKETS = 'ticket-admin-tickets.csv';
+  const EXPORT_LOG = 'ticket-admin-work-log.csv';
+  const NAME_KEY = 'ticket-admin:name', THEME_KEY = 'ticket-admin:theme';
+  const DIR_SUPPORTED = typeof window.showDirectoryPicker === 'function';
+  const EMBEDDED = (function(){ try{ return window.self !== window.top; }catch(e){ return true; } })();
+  const BOM = '﻿';
+  const PAGE = 100;
+  const PIN_ITERATIONS = 200000;
+
+  // ---------- small helpers ----------
+  function normalizeAgentKey(id){   // must match the tracker exactly
+    return (id || '').trim().toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'') || 'agent';
+  }
+  function safeFilePart(s){ return String(s || '').trim().replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'unknown'; }
+  function fmtDur(ms){
+    const t = Math.max(0, Math.floor((ms || 0) / 1000));
+    return `${String(Math.floor(t / 3600)).padStart(2,'0')}:${String(Math.floor(t % 3600 / 60)).padStart(2,'0')}:${String(t % 60).padStart(2,'0')}`;
+  }
+  function fmtHours(ms){ const m = Math.round((ms || 0) / 60000); return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2,'0')}m`; }
+  function parseDur(s){
+    const m = /^\s*(\d{1,5}):([0-5]?\d):([0-5]?\d)\s*$/.exec(s || '');
+    return m ? ((+m[1]) * 3600 + (+m[2]) * 60 + (+m[3])) * 1000 : null;
+  }
+  function fmtWhen(ms){
+    if(!ms) return '';
+    try{
+      const d = new Date(ms), sameYear = d.getFullYear() === new Date().getFullYear();
+      return d.toLocaleString([], Object.assign({month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}, sameYear ? {} : {year:'numeric'}));
+    }
+    catch(e){ return new Date(ms).toISOString(); }
+  }
+  function localDate(ms){ const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+  function el(tag, attrs, ...kids){
+    const e = document.createElement(tag);
+    if(attrs) for(const [k, v] of Object.entries(attrs)){
+      if(v == null || v === false) continue;
+      if(k === 'class') e.className = v;
+      else if(k === 'text') e.textContent = v;
+      else if(k.startsWith('on')) e.addEventListener(k.slice(2), v);
+      else e.setAttribute(k, v === true ? '' : v);
+    }
+    for(const k of kids) if(k != null) e.append(k.nodeType ? k : document.createTextNode(String(k)));
+    return e;
+  }
+  function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+  function adminName(){ return ($('admin-name').value || '').trim() || 'Admin'; }
+
+  // ---------- CSV ----------
+  function parseCsv(text){
+    text = text.replace(/^﻿/, '');
+    const rows = []; let row = [], f = '', q = false;
+    for(let i = 0; i < text.length; i++){
+      const c = text[i];
+      if(q){
+        if(c === '"'){ if(text[i + 1] === '"'){ f += '"'; i++; } else q = false; }
+        else f += c;
+      }else if(c === '"') q = true;
+      else if(c === ','){ row.push(f); f = ''; }
+      else if(c === '\n'){ row.push(f); rows.push(row); row = []; f = ''; }
+      else if(c !== '\r') f += c;
+    }
+    if(f !== '' || row.length){ row.push(f); rows.push(row); }
+    return rows;
+  }
+  function unText(s){ return /^'[=+\-@\t]/.test(s) ? s.slice(1) : s; }      // undo the tracker's formula guard
+  function csvText(v){
+    let s = String(v ?? '').replace(/\s*[\r\n]+\s*/g, ' / ');
+    if(/^[=+\-@\t]/.test(s)) s = "'" + s;
+    return s;
+  }
+  function csvLine(row){ return row.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(',') + '\r\n'; }
+
+  // ---------- PIN hashing (identical to the tracker) ----------
+  function toHex(buf){ return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join(''); }
+  function fromHex(hex){ return new Uint8Array((hex.match(/../g) || []).map(h=>parseInt(h,16))); }
+  async function derivePin(agentId, pin, saltHex, iterations){
+    const material = await crypto.subtle.importKey('raw', new TextEncoder().encode('ticket-tracker:' + normalizeAgentKey(agentId) + ':' + pin), 'PBKDF2', false, ['deriveBits']);
+    return toHex(await crypto.subtle.deriveBits({name:'PBKDF2', hash:'SHA-256', salt: fromHex(saltHex), iterations}, material, 256));
+  }
+
+  // ---------- remembering the folder (local only) ----------
+  function idb(){ return new Promise((res, rej)=>{ const r = indexedDB.open('ticket-admin-db', 1); r.onupgradeneeded = ()=> r.result.createObjectStore('handles'); r.onsuccess = ()=> res(r.result); r.onerror = ()=> rej(r.error); }); }
+  async function saveHandle(h){ try{ const db = await idb(); const tx = db.transaction('handles','readwrite'); tx.objectStore('handles').put(h, 'dir'); await new Promise(r=> tx.oncomplete = r); }catch(e){} }
+  async function loadHandle(){ try{ const db = await idb(); return await new Promise(r=>{ const q = db.transaction('handles').objectStore('handles').get('dir'); q.onsuccess = ()=> r(q.result || null); q.onerror = ()=> r(null); }); }catch(e){ return null; } }
+  function withLock(name, fn){ return (navigator.locks && navigator.locks.request) ? navigator.locks.request(name, fn) : fn(); }
+
+  // ---------- state ----------
+  let dir = null;
+  let events = [];            // every log row from every agent (deduplicated)
+  let states = {};            // agentKey -> {fileName, data}
+  let corrections = emptyCorrections();
+  let tickets = [];           // merged + corrected tickets
+  let agents = [];            // [{key, name, ...}]
+  let loadedAt = 0;
+  let activeTab = 'tickets';
+  let sort = {key:'started', dir:-1};
+  let page = 0;
+  function emptyCorrections(){ return {about:'Ticket tracker admin corrections. Agents’ own log files are never changed; these edits are applied on top. Written by ticket-admin.html.', format:1, tickets:{}, added:{}, audit:[]}; }
+
+  // ---------- reading the folder ----------
+  const STATUS_OF = {ticket_created:'running', ticket_started:'running', ticket_resumed:'running', ticket_paused:'paused', ticket_auto_paused:'paused', ticket_finished:'finished', ticket_deleted:'removed', ticket_removed_by_admin:'deleted'};
+  async function readText(entry){ return await (await entry.getFile()).text(); }
+  async function loadAll(){
+    const t0 = performance.now();
+    const logFiles = [], stateFiles = [];
+    let adminEntry = null;
+    for await (const [name, entry] of dir.entries()){
+      if(entry.kind !== 'file') continue;
+      if(/^ticket-work-log.*\.csv$/i.test(name)) logFiles.push([name, entry]);
+      else if(/^ticket-tracker-.+\.json$/i.test(name)) stateFiles.push([name, entry]);
+      else if(name === ADMIN_FILE) adminEntry = entry;
+    }
+    // log rows
+    const seen = new Set(); const out = []; let seq = 0;
+    for(const [name, entry] of logFiles.sort((a,b)=> a[0].localeCompare(b[0]))){
+      let rows;
+      try{ rows = parseCsv(await readText(entry)); }catch(e){ continue; }
+      if(!rows.length) continue;
+      const h = rows[0].map(x => x.trim());
+      const col = n => h.indexOf(n);
+      const iTs = col('Timestamp'), iAg = col('Agent ID'), iEv = col('Event'), iId = col('Ticket ID'), iCu = col('Customer'),
+            iCo = col('Complaint'), iEl = col('Elapsed'), iCat = col('Category');
+      const iRt = col(COMPETENCY_LABEL) >= 0 ? col(COMPETENCY_LABEL) : col('Technician Competency');
+      if(iTs < 0 || iEv < 0) continue;
+      for(let r = 1; r < rows.length; r++){
+        const x = rows[r];
+        if(x.length < 3 || !x[iTs]) continue;
+        const tsMs = Date.parse(x[iTs]); if(isNaN(tsMs)) continue;
+        const agent = unText(x[iAg] || ''), agentKey = normalizeAgentKey(agent);
+        const ev = {
+          seq: seq++, file: name, ts: x[iTs], tsMs, agent, agentKey, event: x[iEv] || '',
+          ticketId: (x[iId] || '').trim(), customer: unText(x[iCu] || ''), complaint: unText(x[iCo] || ''),
+          elapsed: x[iEl] || '', elapsedMs: parseDur(x[iEl] || ''),
+          competency: iRt >= 0 && iRt < x.length ? x[iRt] : undefined,     // undefined = column didn't exist yet
+          category: iCat >= 0 && iCat < x.length ? unText(x[iCat]) : undefined
+        };
+        const k = `${agentKey}|${ev.ts}|${ev.event}|${ev.ticketId}`;
+        if(seen.has(k)) continue;           // same row in two files (e.g. a downloaded browser copy)
+        seen.add(k); out.push(ev);
+      }
+    }
+    out.sort((a,b)=> a.tsMs - b.tsMs || a.seq - b.seq);
+    events = out;
+    // agents' account files
+    states = {};
+    for(const [name, entry] of stateFiles){
+      try{
+        const data = JSON.parse(await readText(entry));
+        if(data && data.account && data.account.agentId) states[normalizeAgentKey(data.account.agentId)] = {fileName: name, data};
+      }catch(e){}
+    }
+    // corrections
+    corrections = emptyCorrections();
+    if(adminEntry){
+      try{ corrections = normalizeCorrections(JSON.parse(await readText(adminEntry))); }
+      catch(e){ showBanner('Couldn’t read ticket-admin-corrections.json (it may be syncing). Your edits are not shown until you refresh.', true); }
+    }
+    build();
+    loadedAt = Date.now();
+    renderAll();
+    $('folder-line').textContent = `Folder “${dir.name}” · ${logFiles.length} log file${logFiles.length===1?'':'s'}, ${stateFiles.length} agent account file${stateFiles.length===1?'':'s'} · ${events.length.toLocaleString()} log entries · loaded ${new Date(loadedAt).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})} (${Math.round(performance.now() - t0)} ms)`;
+    scheduleExports();
+  }
+  function normalizeCorrections(d){
+    const c = emptyCorrections();
+    if(d && typeof d === 'object'){
+      if(d.tickets && typeof d.tickets === 'object') c.tickets = d.tickets;
+      if(d.added && typeof d.added === 'object') c.added = d.added;
+      if(Array.isArray(d.audit)) c.audit = d.audit;
+      if(d.updatedAt) c.updatedAt = d.updatedAt;
+    }
+    return c;
+  }
+
+  // ---------- building tickets: logs + live account files + corrections ----------
+  function build(){
+    const map = new Map();
+    const agentInfo = new Map();
+    const touch = (key, name)=>{ if(!agentInfo.has(key)) agentInfo.set(key, {key, name, lastEvent:0}); const a = agentInfo.get(key); if(name) a.name = name; return a; };
+    for(const ev of events){
+      const a = touch(ev.agentKey, ev.agent); a.lastEvent = Math.max(a.lastEvent, ev.tsMs);
+      if(!ev.ticketId) continue;
+      const key = ev.agentKey + '|' + ev.ticketId;
+      if(!map.has(key)) map.set(key, {key, agentKey: ev.agentKey, agentId: ev.agent, ticketId: ev.ticketId, events: []});
+      map.get(key).events.push(ev);
+    }
+    for(const [k, st] of Object.entries(states)){
+      touch(k, st.data.account.agentId);
+      for(const lt of (Array.isArray(st.data.tickets) ? st.data.tickets : [])){
+        if(!lt || lt.id == null) continue;
+        const key = k + '|' + String(lt.id);
+        if(!map.has(key)) map.set(key, {key, agentKey: k, agentId: st.data.account.agentId, ticketId: String(lt.id), events: []});
+        map.get(key).live = lt;
+      }
+    }
+    const now = Date.now();
+    tickets = [];
+    for(const t of map.values()){
+      const evs = t.events;
+      const last = (pred)=>{ for(let i = evs.length - 1; i >= 0; i--) if(pred(evs[i])) return evs[i]; return null; };
+      const rowNotAdmin = last(e => e.event !== 'admin_correction_applied') || evs[evs.length - 1];
+      const latest = evs[evs.length - 1];
+      const statusEv = last(e => STATUS_OF[e.event]);
+      const L = {   // values as the agent's tracker currently has them
+        customerName: latest ? latest.customer : '', complaint: latest ? latest.complaint : '',
+        category: (last(e => e.category !== undefined) || {}).category || '',
+        competency: ratingOf((last(e => e.competency !== undefined) || {}).competency),
+        totalMs: latest && latest.elapsedMs != null ? latest.elapsedMs : 0,
+        status: statusEv ? STATUS_OF[statusEv.event] : 'running',
+        startedAt: evs.length ? evs[0].tsMs : 0,
+        finishedAt: (last(e => e.event === 'ticket_finished') || {}).tsMs || 0,
+        lastActivity: latest ? latest.tsMs : 0
+      };
+      if(t.live){   // the agent's account file is the live view of open tickets
+        const lt = t.live;
+        if(['running','paused','finished','notstarted'].includes(lt.status)) L.status = lt.status === 'notstarted' ? 'paused' : lt.status;
+        L.totalMs = (Number(lt.accumulatedMs) || 0) + (lt.status === 'running' && lt.lastResumeAt ? Math.max(0, now - lt.lastResumeAt) : 0);
+        if(typeof lt.customerName === 'string') L.customerName = lt.customerName;
+        if(typeof lt.complaint === 'string') L.complaint = lt.complaint;
+        if(typeof lt.category === 'string') L.category = lt.category;
+        L.competency = ratingOf(lt.competency);
+        if(!L.startedAt && lt.startedAt) L.startedAt = Date.parse(lt.startedAt) || 0;
+        if(lt.finishedAt) L.finishedAt = Date.parse(lt.finishedAt) || L.finishedAt;
+      }
+      t.L = L;
+      t.corr = corrections.tickets[t.key] || null;
+      applyCorrection(t, now);
+      tickets.push(t);
+    }
+    for(const [id, a] of Object.entries(corrections.added)){
+      if(!a || !a.agentId) continue;
+      const k = normalizeAgentKey(a.agentId);
+      touch(k, a.agentId);
+      const t = {key: k + '|' + id, agentKey: k, agentId: a.agentId, ticketId: id, events: [], added: a};
+      t.L = {customerName: a.customerName || '', category: a.category || '', complaint: a.complaint || '', competency: ratingOf(a.competency),
+             totalMs: Number(a.totalMs) || 0, status: 'finished', startedAt: Date.parse(a.startedAt) || 0, finishedAt: Date.parse(a.finishedAt) || 0, lastActivity: Date.parse(a.editedAt || a.addedAt) || 0};
+      t.cur = Object.assign({}, t.L);
+      t.flags = {added: true, deleted: a.deleted === true, edited: false, overridden: []};
+      t.display = t.flags.deleted ? 'deleted' : 'added';
+      tickets.push(t);
+    }
+    for(const t of tickets){ const a = agentInfo.get(t.agentKey); if(a && !a.name) a.name = t.agentId; }
+    agents = [...agentInfo.values()].map(a => Object.assign(a, {state: states[a.key] || null})).sort((x,y)=> (x.name || '').localeCompare(y.name || ''));
+  }
+  function ratingOf(v){ if(v === '' || v == null) return null; const n = Number(v); return [0,1,2,3,4,5].includes(n) ? n : null; }
+  const FIELD_EVENTS = {customerName:['ticket_edited'], category:['ticket_edited'], complaint:['ticket_edited'], competency:['competency_rated','competency_cleared']};
+  function applyCorrection(t, now){
+    const c = t.corr, L = t.L;
+    t.cur = Object.assign({}, L);
+    t.flags = {added:false, deleted:false, edited:false, overridden:[], removedByAgent: L.status === 'removed'};
+    if(c){
+      const at = Date.parse(c.editedAt) || 0;
+      const f = c.fields || {};
+      for(const k of ['customerName','category','complaint','competency']){
+        if(!(k in f)) continue;
+        const want = k === 'competency' ? ratingOf(f[k]) : String(f[k] ?? '');
+        // If the agent changed this field themselves after the admin edit, the agent's newer value wins.
+        const later = t.events.filter(e => e.tsMs > at && FIELD_EVENTS[k].includes(e.event));
+        const agentVal = k === 'competency' ? L.competency : L[k];
+        if(later.length && agentVal !== want){ t.flags.overridden.push(k); continue; }
+        t.cur[k] = want;
+      }
+      const tAt = Date.parse(c.timeEditedAt);
+      if(Number.isFinite(c.totalMs) && !isNaN(tAt)){
+        const applied = (t.live && t.live.adminTimeVersion && Date.parse(t.live.adminTimeVersion) >= tAt) ||
+                        t.events.some(e => e.event === 'admin_correction_applied' && e.tsMs >= tAt);
+        if(!applied){
+          const lt = t.live;
+          const since = lt && lt.status === 'running' ? Math.max(0, now - Math.max(tAt, lt.lastResumeAt || 0)) : 0;
+          t.cur.totalMs = c.totalMs + since;
+        }
+      }
+      if(c.deleted === true) t.flags.deleted = true;
+      if(t.flags.removedByAgent && c.restored === true) t.flags.removedByAgent = false;
+      const o = c.original || {};
+      t.flags.edited = adminFields(t).some(k => k in o && !same(k, o[k], t.cur[k]));
+    }
+    t.display = t.flags.deleted ? 'deleted' : L.status === 'removed' ? 'removed' : t.cur.status;
+  }
+  // Fields this admin edit actually changed (and the agent hasn't since changed themselves).
+  function adminFields(t){
+    const c = t.corr; if(!c) return [];
+    const ks = Object.keys(c.fields || {}).filter(k => k in FIELD_EVENTS && !t.flags.overridden.includes(k));
+    if(Number.isFinite(c.totalMs)) ks.push('totalMs');
+    return ks;
+  }
+  function same(k, a, b){
+    if(k === 'totalMs') return Math.floor((a || 0) / 1000) === Math.floor((b || 0) / 1000);
+    if(k === 'competency') return ratingOf(a) === ratingOf(b);
+    return String(a ?? '') === String(b ?? '');
+  }
+  function counted(t){ return !t.flags.deleted && !t.flags.removedByAgent; }
+
+  // ---------- saving corrections (re-read first so two admins don't overwrite each other) ----------
+  let saveChain = Promise.resolve();
+  function saveCorrections(mutate, auditItems){
+    saveChain = saveChain.then(()=> withLock('ticket-admin-corrections', async ()=>{
+      let fresh = emptyCorrections();
+      let fh;
+      try{ fh = await dir.getFileHandle(ADMIN_FILE, {create:true}); }catch(e){ throw folderError(e); }
+      const file = await fh.getFile();
+      if(file.size > 0){
+        try{ fresh = normalizeCorrections(JSON.parse(await file.text())); }
+        catch(e){ throw new Error('ticket-admin-corrections.json couldn’t be read (it may be syncing). Nothing was saved; try again in a moment.'); }
+      }
+      mutate(fresh);
+      (auditItems || []).forEach(a => fresh.audit.push(a));
+      fresh.updatedAt = new Date().toISOString();
+      try{
+        const w = await fh.createWritable();
+        await w.write(JSON.stringify(fresh, null, 1));
+        await w.close();
+      }catch(e){ throw folderError(e); }
+      corrections = fresh;
+    }));
+    return saveChain.then(()=>{ build(); renderAll(); scheduleExports(); }, e=>{ saveChain = Promise.resolve(); showBanner(e.message || String(e), true); throw e; });
+  }
+  function folderError(e){
+    if(e && (e.name === 'NoModificationAllowedError' || e.name === 'InvalidStateError'))
+      return new Error('A file in the folder is open in another program (for example Excel). Close it and try again.');
+    if(e && e.name === 'NotAllowedError') return new Error('The browser no longer has permission to write to the folder. Click Refresh to reconnect.');
+    return new Error('Couldn’t save to the folder: ' + ((e && (e.message || e.name)) || e));
+  }
+
+  // ---------- exports written into the folder ----------
+  const TICKETS_HEADER = ['Agent ID','Ticket ID','Customer','Category','Complaint','Status','Started At','Finished At','Duration','Duration (minutes)', COMPETENCY_LABEL,'Edited by admin','Source'];
+  function statusText(t){ return {running:'Running', paused:'Paused', finished:'Finished', added:'Finished (added by admin)', removed:'Removed by agent', deleted:'Deleted by admin'}[t.display] || t.display; }
+  function ticketRow(t){
+    const c = t.cur;
+    return [csvText(t.agentId), t.ticketId, csvText(c.customerName), csvText(c.category), csvText(c.complaint), statusText(t),
+      c.startedAt ? new Date(c.startedAt).toISOString() : '', c.finishedAt ? new Date(c.finishedAt).toISOString() : '',
+      fmtDur(c.totalMs), (c.totalMs / 60000).toFixed(1), c.competency ?? '', t.flags.edited ? 'Yes' : '', t.flags.added ? 'Added by admin' : 'Tracker'];
+  }
+  function ticketsCsv(list){ return BOM + csvLine(TICKETS_HEADER) + list.map(t => csvLine(ticketRow(t))).join(''); }
+  function workLogCsv(){
+    const head = ['Timestamp','Agent ID','Event','Ticket ID','Customer','Complaint','Elapsed', COMPETENCY_LABEL, 'Category', 'Edited by admin'];
+    const byKey = new Map(tickets.map(t => [t.key, t]));
+    const rows = [];
+    for(const e of events){
+      const t = e.ticketId ? byKey.get(e.agentKey + '|' + e.ticketId) : null;
+      if(t && !counted(t)) continue;
+      const c = t && t.corr && t.corr.fields ? t.corr.fields : null;
+      const pick = (k, v)=> (c && k in c && !t.flags.overridden.includes(k)) ? (k === 'competency' ? (ratingOf(c[k]) ?? '') : c[k]) : v;
+      rows.push([e.tsMs, [e.ts, csvText(e.agent), e.event, e.ticketId, csvText(pick('customerName', e.customer)), csvText(pick('complaint', e.complaint)),
+        e.elapsed, pick('competency', e.competency ?? ''), csvText(pick('category', e.category ?? '')), t && t.flags.edited ? 'Yes' : '']]);
+    }
+    for(const t of tickets.filter(t => t.flags.added && counted(t))){
+      const c = t.cur;
+      const base = [csvText(t.agentId), null, t.ticketId, csvText(c.customerName), csvText(c.complaint), null, c.competency ?? '', csvText(c.category), 'Added by admin'];
+      if(c.startedAt) rows.push([c.startedAt, [new Date(c.startedAt).toISOString(), base[0], 'ticket_created', base[2], base[3], base[4], '00:00:00', base[6], base[7], base[8]]]);
+      rows.push([c.finishedAt || c.startedAt, [new Date(c.finishedAt || c.startedAt || Date.now()).toISOString(), base[0], 'ticket_finished', base[2], base[3], base[4], fmtDur(c.totalMs), base[6], base[7], base[8]]]);
+    }
+    rows.sort((a,b)=> a[0] - b[0]);
+    return BOM + csvLine(head) + rows.map(r => csvLine(r[1])).join('');
+  }
+  let exportTimer = null, exportsAt = 0;
+  function scheduleExports(){ clearTimeout(exportTimer); exportTimer = setTimeout(writeExports, 400); }
+  async function writeExports(){
+    if(!dir) return;
+    try{
+      await withLock('ticket-admin-exports', async ()=>{
+        const list = sortedForExport(tickets.filter(counted));
+        for(const [name, text] of [[EXPORT_TICKETS, ticketsCsv(list)], [EXPORT_LOG, workLogCsv()]]){
+          const fh = await dir.getFileHandle(name, {create:true});
+          const w = await fh.createWritable(); await w.write(text); await w.close();
+        }
+      });
+      exportsAt = Date.now();
+      if(!bannerIsError) showBanner(`Corrected exports updated in the folder: ${EXPORT_TICKETS} (one row per ticket) and ${EXPORT_LOG} (every event). Point Power Query at these for corrected data.`);
+    }catch(e){ showBanner(folderError(e).message.replace('try again', 'click Refresh') + ' (corrected export files weren’t updated)', true); }
+  }
+  function sortedForExport(list){ return list.slice().sort((a,b)=> (a.agentId || '').localeCompare(b.agentId || '') || (a.cur.startedAt - b.cur.startedAt)); }
+  function download(name, text){
+    const url = URL.createObjectURL(new Blob([text], {type:'text/csv'}));
+    const a = el('a', {href: url, download: name}); document.body.append(a); a.click(); a.remove();
+    setTimeout(()=> URL.revokeObjectURL(url), 1000);
+  }
+
+  // ---------- banner ----------
+  let bannerIsError = false;
+  function showBanner(msg, isErr){
+    const b = $('banner'); b.textContent = msg || ''; b.hidden = !msg; b.classList.toggle('err', !!isErr); bannerIsError = !!(msg && isErr);
+  }
+
+  // ---------- filters ----------
+  function filtered(){
+    const q = $('f-search').value.trim().toLowerCase();
+    const ag = $('f-agent').value, cat = $('f-category').value, st = $('f-status').value;
+    const from = $('f-from').value, to = $('f-to').value;
+    return tickets.filter(t => {
+      const c = t.cur;
+      if(ag && t.agentKey !== ag) return false;
+      if(cat && (c.category || '') !== cat) return false;
+      const d = c.startedAt ? localDate(c.startedAt) : '';
+      if(from && (!d || d < from)) return false;
+      if(to && (!d || d > to)) return false;
+      switch(st){
+        case 'all': if(!counted(t)) return false; break;
+        case 'open': if(!counted(t) || !['running','paused'].includes(t.display)) return false; break;
+        case 'running': case 'paused': if(!counted(t) || t.display !== st) return false; break;
+        case 'finished': if(!counted(t) || !['finished','added'].includes(t.display)) return false; break;
+        case 'added': if(!t.flags.added) return false; break;
+        case 'edited': if(!t.flags.edited) return false; break;
+        case 'removed': if(t.display !== 'removed') return false; break;
+        case 'deleted': if(!t.flags.deleted) return false; break;
+      }
+      if(q){
+        const hay = [t.agentId, t.ticketId, c.customerName, c.category, c.complaint].join(' \u0001 ').toLowerCase();
+        if(!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }
+  function fillSelect(sel, items, allLabel){
+    const keep = sel.value;
+    sel.replaceChildren(el('option', {value:''}, allLabel), ...items.map(([v, l]) => el('option', {value: v}, l)));
+    if([...sel.options].some(o => o.value === keep)) sel.value = keep;
+  }
+  function renderFilterOptions(){
+    fillSelect($('f-agent'), agents.map(a => [a.key, a.name || a.key]), 'All agents');
+    const cats = [...new Set(tickets.map(t => t.cur.category).filter(Boolean))].sort((a,b)=> a.localeCompare(b));
+    fillSelect($('f-category'), cats.map(c => [c, c]), 'All categories');
+  }
+
+  // ---------- tickets table ----------
+  const COLS = [
+    {key:'agent', label:'Agent', val: t => (t.agentId || '').toLowerCase()},
+    {key:'ticket', label:'Ticket', val: t => t.flags.added ? 1e12 + (parseInt(t.ticketId.slice(2), 10) || 0) : (Number(t.ticketId) || 0), num:true},
+    {key:'customer', label:'Customer', val: t => (t.cur.customerName || '').toLowerCase()},
+    {key:'category', label:'Category', val: t => (t.cur.category || '').toLowerCase()},
+    {key:'complaint', label:'Complaint', val: t => (t.cur.complaint || '').toLowerCase()},
+    {key:'status', label:'Status', val: t => t.display},
+    {key:'started', label:'Started', val: t => t.cur.startedAt || 0},
+    {key:'finished', label:'Finished', val: t => t.cur.finishedAt || 0},
+    {key:'time', label:'Time', val: t => t.cur.totalMs || 0, num:true},
+    {key:'rating', label:'Rating', val: t => t.cur.competency ?? -1, num:true}
+  ];
+  function renderTickets(){
+    const list = filtered();
+    const col = COLS.find(c => c.key === sort.key) || COLS[6];
+    list.sort((a,b)=>{ const x = col.val(a), y = col.val(b); return (x < y ? -1 : x > y ? 1 : 0) * sort.dir || (b.cur.startedAt - a.cur.startedAt); });
+    const pages = Math.max(1, Math.ceil(list.length / PAGE));
+    if(page >= pages) page = pages - 1;
+    const total = list.filter(counted).reduce((s, t) => s + (t.cur.totalMs || 0), 0);
+    $('t-count').textContent = `${list.length.toLocaleString()} ticket${list.length===1?'':'s'} · ${fmtHours(total)} total`;
+    const thead = $('t-table').tHead;
+    thead.replaceChildren(el('tr', null, ...COLS.map(c => el('th', {class: `sortable${c.num ? ' num' : ''}${sort.key === c.key ? ' sorted' + (sort.dir > 0 ? ' asc' : '') : ''}`, scope:'col', tabindex:'0',
+      onclick: ()=>{ sort = {key: c.key, dir: sort.key === c.key ? -sort.dir : (c.num || c.key === 'started' || c.key === 'finished' ? -1 : 1)}; page = 0; renderTickets(); },
+      onkeydown: e => { if(e.key === 'Enter') e.currentTarget.click(); }}, c.label))));
+    const body = $('t-table').tBodies[0];
+    if(!list.length){ body.replaceChildren(el('tr', null, el('td', {colspan: COLS.length, class:'empty'}, tickets.length ? 'No tickets match these filters.' : 'No tickets in this folder yet.'))); $('t-pager').replaceChildren(); return; }
+    const frag = document.createDocumentFragment();
+    for(const t of list.slice(page * PAGE, page * PAGE + PAGE)){
+      const c = t.cur;
+      const statusCell = el('td', {class:'nowrap keep'}, el('span', {class: 'tag ' + t.display}, statusText(t).replace(' (added by admin)', '')));
+      if(t.flags.edited) statusCell.append(el('span', {class:'tag edited', title:'Edited by admin'}, 'edited'));
+      const tr = el('tr', {class: 'clickable' + (counted(t) ? '' : ' struck'), tabindex:'0', onclick: ()=> openEditor(t.key), onkeydown: e => { if(e.key === 'Enter') openEditor(t.key); }},
+        el('td', {class:'nowrap'}, t.agentId || ''), el('td', {class:'num'}, t.ticketId),
+        el('td', {class:'clip', title: c.customerName || ''}, c.customerName || ''), el('td', {class:'clip'}, c.category || ''),
+        el('td', {class:'clip', title: c.complaint || ''}, c.complaint || ''), statusCell,
+        el('td', {class:'nowrap'}, fmtWhen(c.startedAt)), el('td', {class:'nowrap'}, fmtWhen(c.finishedAt)),
+        el('td', {class:'num'}, fmtDur(c.totalMs)), el('td', {class:'num'}, c.competency ?? '–'));
+      frag.append(tr);
+    }
+    body.replaceChildren(frag);
+    const pager = $('t-pager');
+    pager.replaceChildren();
+    if(pages > 1){
+      pager.append(el('button', {class:'btn-ghost', type:'button', disabled: page === 0, onclick: ()=>{ page--; renderTickets(); }}, '‹ Previous'),
+                   el('span', null, `Page ${page + 1} of ${pages}`),
+                   el('button', {class:'btn-ghost', type:'button', disabled: page >= pages - 1, onclick: ()=>{ page++; renderTickets(); }}, 'Next ›'));
+    }
+  }
+
+  // ---------- summary ----------
+  function renderSummary(){
+    const list = filtered().filter(counted);
+    const total = list.reduce((s,t)=> s + t.cur.totalMs, 0);
+    const rated = list.filter(t => t.cur.competency != null);
+    const avgR = rated.length ? rated.reduce((s,t)=> s + t.cur.competency, 0) / rated.length : null;
+    const fin = list.filter(t => t.display === 'finished' || t.display === 'added');
+    $('kpis').replaceChildren(...[
+      [list.length.toLocaleString(), 'Tickets'], [fmtHours(total), 'Total time'],
+      [list.length ? fmtDur(total / list.length) : '–', 'Average time per ticket'],
+      [fin.length.toLocaleString(), 'Finished'],
+      [avgR == null ? '–' : avgR.toFixed(1), `Average ${COMPETENCY_LABEL.toLowerCase()} (${rated.length} rated)`]
+    ].map(([v, l]) => el('div', {class:'kpi'}, el('div', {class:'v'}, v), el('div', {class:'l'}, l))));
+    const by = $('group-by').value;
+    const keyOf = t => by === 'agent' ? (t.agentId || '') : by === 'category' ? (t.cur.category || '(no category)') : by === 'customer' ? (t.cur.customerName || '(no customer)')
+      : (t.cur.startedAt ? localDate(t.cur.startedAt).slice(0, 7) : '(unknown)');
+    const groups = new Map();
+    for(const t of list){ const k = keyOf(t); if(!groups.has(k)) groups.set(k, []); groups.get(k).push(t); }
+    const rows = [...groups.entries()].map(([k, ts]) => {
+      const tot = ts.reduce((s,t)=> s + t.cur.totalMs, 0); const r = ts.filter(t => t.cur.competency != null);
+      return {k, n: ts.length, tot, avg: tot / ts.length, rated: r.length, avgR: r.length ? r.reduce((s,t)=> s + t.cur.competency, 0) / r.length : null};
+    }).sort((a,b)=> by === 'month' ? b.k.localeCompare(a.k) : b.tot - a.tot);
+    const max = Math.max(1, ...rows.map(r => r.tot));
+    const label = {agent:'Agent', category:'Category', customer:'Customer', month:'Month'}[by];
+    $('s-table').tHead.replaceChildren(el('tr', null, el('th', null, label), el('th', {class:'num'}, 'Tickets'), el('th', {class:'num'}, 'Total time'),
+      el('th', {class:'bar-cell'}, ''), el('th', {class:'num'}, 'Avg per ticket'), el('th', {class:'num'}, 'Rated'), el('th', {class:'num'}, 'Avg rating')));
+    $('s-table').tBodies[0].replaceChildren(...(rows.length ? rows.map(r => el('tr', null,
+      el('td', {class:'clip', title: r.k}, r.k), el('td', {class:'num'}, r.n.toLocaleString()), el('td', {class:'num'}, fmtHours(r.tot)),
+      el('td', {class:'bar-cell'}, (()=>{ const b = el('div', {class:'bar'}); b.style.width = (100 * r.tot / max).toFixed(1) + '%'; return b; })()),
+      el('td', {class:'num'}, fmtDur(r.avg)), el('td', {class:'num'}, r.rated), el('td', {class:'num'}, r.avgR == null ? '–' : r.avgR.toFixed(1))))
+      : [el('tr', null, el('td', {colspan:7, class:'empty'}, 'No tickets match these filters.'))]));
+  }
+
+  // ---------- agents ----------
+  function renderAgents(){
+    const now = Date.now();
+    $('a-table').tHead.replaceChildren(el('tr', null, ...['Agent','Tickets','Open now','Total time','Last log entry','Tracker last open','Account file',''].map((h, i) => el('th', {class: [1,2,3].includes(i) ? 'num' : ''}, h))));
+    $('a-table').tBodies[0].replaceChildren(...(agents.length ? agents.map(a => {
+      const ts = tickets.filter(t => t.agentKey === a.key && counted(t));
+      const open = ts.filter(t => ['running','paused'].includes(t.display));
+      const st = a.state;
+      const seenAt = st ? (Number(st.data.lastSeenAt) || Date.parse(st.data.savedAt) || 0) : 0;
+      const acct = st ? (st.data.account.resetByAdmin ? `PIN reset ${fmtWhen(Date.parse(st.data.account.resetByAdmin.at))}` : `Created ${fmtWhen(Date.parse(st.data.account.createdAt))}`) : 'None (log only)';
+      return el('tr', null,
+        el('td', {class:'nowrap'}, a.name || a.key), el('td', {class:'num'}, ts.length.toLocaleString()),
+        el('td', {class:'num'}, open.length ? `${open.filter(t => t.display === 'running').length} running, ${open.filter(t => t.display === 'paused').length} paused` : '0'),
+        el('td', {class:'num'}, fmtHours(ts.reduce((s,t)=> s + t.cur.totalMs, 0))),
+        el('td', {class:'nowrap'}, fmtWhen(a.lastEvent)), el('td', {class:'nowrap'}, seenAt ? fmtWhen(seenAt) : '–'),
+        el('td', {class:'nowrap muted'}, acct),
+        el('td', {class:'nowrap'}, el('button', {class:'btn-ghost', type:'button', disabled: !st, title: st ? '' : 'This agent has no account file in this folder', onclick: ()=> openPinDialog(a)}, 'Reset PIN')));
+    }) : [el('tr', null, el('td', {colspan:8, class:'empty'}, 'No agents found in this folder.'))]));
+  }
+
+  // ---------- change history ----------
+  const FIELD_LABEL = {customerName:'Customer', category:'Category', complaint:'Complaint', competency:'Rating', totalMs:'Time'};
+  function fmtVal(k, v){ return k === 'totalMs' ? fmtDur(v) : (v == null || v === '' ? '(blank)' : String(v)); }
+  function historyItem(a){
+    const what = {edit:'Edited', delete:'Deleted', restore:'Restored', add:'Added', pin_reset:'Reset PIN for', revert:'Reverted', include:'Included'}[a.action] || a.action;
+    const item = el('div', {class:'history-item'},
+      el('div', {class:'when'}, `${fmtWhen(Date.parse(a.at))} · ${a.by || 'Admin'}`),
+      el('div', null, `${what} ${a.ticketId ? 'ticket ' + a.ticketId + ' · ' : ''}${a.agentId || ''}`));
+    for(const [k, [o, n]] of Object.entries(a.changes || {})){
+      item.append(el('div', {class:'change'}, `${FIELD_LABEL[k] || k}: `, el('span', {class:'old'}, fmtVal(k, o)), ' → ', el('span', {class:'new'}, fmtVal(k, n))));
+    }
+    if(a.note) item.append(el('div', {class:'change muted'}, a.note));
+    return item;
+  }
+  function renderHistory(){
+    const list = corrections.audit.slice().reverse();
+    $('h-list').replaceChildren(...(list.length ? list.map(historyItem) : [el('div', {class:'empty'}, 'No admin changes yet. Every edit you make is listed here, with the old and new values.')]));
+  }
+
+  function renderAll(){
+    renderFilterOptions();
+    if(activeTab === 'tickets') renderTickets();
+    if(activeTab === 'summary') renderSummary();
+    if(activeTab === 'agents') renderAgents();
+    if(activeTab === 'history') renderHistory();
+  }
+
+  // ---------- editor ----------
+  function competencySelect(v){
+    const s = el('select', {id:'e-rating'}, el('option', {value:''}, 'Not rated'), ...[0,1,2,3,4,5].map(n => el('option', {value: String(n)}, String(n))));
+    s.value = v == null ? '' : String(v);
+    return s;
+  }
+  function openEditor(key){
+    const t = tickets.find(x => x.key === key); if(!t) return;
+    const c = t.cur, o = t.corr && t.corr.original ? t.corr.original : null;
+    const body = $('editor-body');
+    const mine = adminFields(t);
+    const origNote = k => (o && mine.includes(k) && k in o && !same(k, o[k], c[k])) ? el('div', {class:'orig'}, `Agent’s original: ${fmtVal(k, o[k])}`) : null;
+    const err = el('div', {class:'err', hidden:true});
+    const live = t.live && ['running','paused'].includes(t.live.status);
+    body.replaceChildren(...[
+      el('h2', null, `${t.flags.added ? 'Added ticket' : 'Ticket'} ${t.ticketId} · ${t.agentId}`),
+      el('div', {class:'hint'}, `${statusText(t)} · started ${fmtWhen(c.startedAt) || '–'}${c.finishedAt ? ' · finished ' + fmtWhen(c.finishedAt) : ''}` +
+        (live ? '. This ticket is open in the agent’s tracker; your changes reach it within about a minute while it’s open (tracker v4.10 or later).' : '')),
+      el('div', {class:'grid2'},
+        el('label', {class:'field'}, 'Customer', el('input', {id:'e-customer', type:'text', value: c.customerName || ''}), origNote('customerName')),
+        el('label', {class:'field'}, 'Category', el('input', {id:'e-category', type:'text', value: c.category || ''}), origNote('category'))),
+      el('label', {class:'field'}, 'Complaint', (()=>{ const ta = el('textarea', {id:'e-complaint'}); ta.value = c.complaint || ''; return ta; })(), origNote('complaint')),
+      el('div', {class:'grid2'},
+        el('label', {class:'field'}, 'Time (hours:minutes:seconds)', el('input', {id:'e-time', type:'text', value: fmtDur(c.totalMs), inputmode:'numeric'}), origNote('totalMs')),
+        el('label', {class:'field'}, COMPETENCY_LABEL, competencySelect(c.competency), origNote('competency'))),
+      t.flags.overridden.length ? el('div', {class:'hint', style:'color:var(--warn)'}, `The agent changed ${t.flags.overridden.map(k => FIELD_LABEL[k].toLowerCase()).join(', ')} after your edit, so their newer value is shown.`) : null,
+      err,
+      el('div', {class:'row-actions'},
+        el('div', {class:'right'},
+          t.flags.deleted ? el('button', {class:'btn-ghost', type:'button', onclick: ()=> setDeleted(t, false, err)}, 'Restore ticket')
+                          : el('button', {class:'btn-danger', type:'button', onclick: ()=> setDeleted(t, true, err)}, 'Delete ticket'),
+          (t.display === 'removed' || (t.corr && t.corr.restored)) && !t.flags.added
+            ? el('button', {class:'btn-ghost', type:'button', onclick: ()=> setIncluded(t, !(t.corr && t.corr.restored), err)}, t.corr && t.corr.restored ? 'Exclude again' : 'Include in reports')
+            : null,
+          t.flags.edited && !t.flags.added ? el('button', {class:'btn-ghost', type:'button', onclick: ()=> revert(t, err)}, 'Revert to agent’s original') : null),
+        el('div', {class:'right'},
+          el('button', {class:'btn-ghost', type:'button', onclick: ()=> $('editor').close()}, 'Close'),
+          el('button', {class:'btn-primary', type:'button', onclick: ()=> saveEdit(t, err)}, 'Save changes'))),
+      ticketDetails(t)].filter(Boolean));
+    $('editor').showModal();
+    setTimeout(()=> $('e-customer').focus(), 0);
+  }
+  function ticketDetails(t){
+    const audit = corrections.audit.filter(a => a.agentId && normalizeAgentKey(a.agentId) === t.agentKey && String(a.ticketId) === String(t.ticketId)).reverse();
+    const d1 = el('details', null, el('summary', null, `Change history (${audit.length})`), ...(audit.length ? audit.map(historyItem) : [el('div', {class:'hint'}, 'No admin changes yet.')]));
+    const d2 = el('details', null, el('summary', null, `Log entries (${t.events.length})`),
+      t.events.length ? el('div', {class:'table-wrap', style:'margin-top:8px'}, el('table', {class:'mini'},
+        el('thead', null, el('tr', null, el('th', null, 'When'), el('th', null, 'Event'), el('th', {class:'num'}, 'Elapsed'), el('th', null, 'Customer'), el('th', null, 'Category'), el('th', {class:'num'}, 'Rating'))),
+        el('tbody', null, ...t.events.map(e => el('tr', null, el('td', {class:'nowrap'}, fmtWhen(e.tsMs)), el('td', {class:'nowrap'}, e.event), el('td', {class:'num'}, e.elapsed),
+          el('td', {class:'clip'}, e.customer), el('td', {class:'clip'}, e.category ?? ''), el('td', {class:'num'}, e.competency ?? '')))))) : el('div', {class:'hint'}, 'Added by admin; there are no tracker log entries.'));
+    return el('div', {style:'display:flex; flex-direction:column; gap:8px;'}, d1, d2);
+  }
+  function readEditor(err){
+    const v = {
+      customerName: $('e-customer').value.trim().slice(0, 500), category: $('e-category').value.trim().slice(0, 200),
+      complaint: $('e-complaint').value.trim().slice(0, 100000), competency: ratingOf($('e-rating').value), totalMs: parseDur($('e-time').value)
+    };
+    if(v.totalMs == null){ err.textContent = 'Enter the time as hours:minutes:seconds, for example 01:30:00.'; err.hidden = false; return null; }
+    return v;
+  }
+  function audit(action, t, changes, note){ return {id: uid(), at: new Date().toISOString(), by: adminName(), action, agentId: t.agentId, ticketId: t.ticketId, changes, note}; }
+  async function saveEdit(t, err){
+    err.hidden = true;
+    const v = readEditor(err); if(!v) return;
+    const changes = {};
+    for(const k of Object.keys(FIELD_LABEL)) if(!same(k, t.cur[k], v[k])) changes[k] = [t.cur[k] ?? null, v[k]];
+    if(!Object.keys(changes).length){ $('editor').close(); return; }
+    const now = new Date().toISOString();
+    try{
+      if(t.flags.added){
+        await saveCorrections(d => {
+          const a = d.added[t.ticketId]; if(!a) return;
+          Object.assign(a, v, {editedAt: now, editedBy: adminName()});
+          const st = Date.parse(a.startedAt); if(!isNaN(st)) a.finishedAt = new Date(st + v.totalMs).toISOString();
+        }, [audit('edit', t, changes)]);
+      }else{
+        const snapshot = Object.assign({}, t.L);
+        await saveCorrections(d => {
+          const e = d.tickets[t.key] || {agentId: t.agentId, ticketId: t.ticketId, fields: {}};
+          if(!e.original) e.original = {customerName: snapshot.customerName, category: snapshot.category, complaint: snapshot.complaint, competency: snapshot.competency, totalMs: snapshot.totalMs};
+          e.fields = e.fields || {};
+          for(const k of Object.keys(changes)){
+            if(k === 'totalMs'){ e.totalMs = v.totalMs; e.timeEditedAt = now; }
+            else e.fields[k] = v[k];
+          }
+          e.editedAt = now; e.editedBy = adminName();
+          d.tickets[t.key] = e;
+        }, [audit('edit', t, changes)]);
+      }
+      $('editor').close();
+    }catch(e){ err.textContent = e.message || String(e); err.hidden = false; }
+  }
+  async function revert(t, err){
+    const o = t.corr && t.corr.original; if(!o) return;
+    const changes = {};
+    const mine = adminFields(t);
+    for(const k of mine) if(k in o && !same(k, t.cur[k], o[k])) changes[k] = [t.cur[k] ?? null, o[k] ?? null];
+    const now = new Date().toISOString();
+    try{
+      // Revert = a new edit back to the agent's values, so an open ticket in the tracker changes back too.
+      await saveCorrections(d => {
+        const e = d.tickets[t.key]; if(!e) return;
+        const f = {};
+        for(const k of mine) if(k !== 'totalMs' && k in o) f[k] = k === 'competency' ? (o[k] ?? null) : (o[k] ?? '');
+        e.fields = f;
+        if('totalMs' in changes){ e.totalMs = o.totalMs; e.timeEditedAt = now; }
+        e.editedAt = now; e.editedBy = adminName();
+      }, [audit('revert', t, changes)]);
+      $('editor').close();
+    }catch(e){ err.textContent = e.message || String(e); err.hidden = false; }
+  }
+  async function setDeleted(t, del, err){
+    if(del && !window.confirm(`Delete ticket ${t.ticketId} (${t.agentId})?\n\nIt will be left out of your totals and corrected exports${t.live && ['running','paused'].includes(t.live.status) ? ', and removed from the agent’s tracker' : ''}. The agent’s log files aren’t changed, and you can restore it later.`)) return;
+    const now = new Date().toISOString();
+    try{
+      if(t.flags.added){
+        await saveCorrections(d => { const a = d.added[t.ticketId]; if(a){ a.deleted = del; a.editedAt = now; a.editedBy = adminName(); } }, [audit(del ? 'delete' : 'restore', t, null)]);
+      }else{
+        const snapshot = Object.assign({}, t.L);
+        await saveCorrections(d => {
+          const e = d.tickets[t.key] || {agentId: t.agentId, ticketId: t.ticketId, fields: {}};
+          if(!e.original) e.original = {customerName: snapshot.customerName, category: snapshot.category, complaint: snapshot.complaint, competency: snapshot.competency, totalMs: snapshot.totalMs};
+          e.deleted = del; e.editedAt = now; e.editedBy = adminName();
+          d.tickets[t.key] = e;
+        }, [audit(del ? 'delete' : 'restore', t, null, !del && t.live ? 'Restoring doesn’t put it back in the agent’s tracker; it is included in your totals and exports again.' : null)]);
+      }
+      $('editor').close();
+    }catch(e){ err.textContent = e.message || String(e); err.hidden = false; }
+  }
+  async function setIncluded(t, inc, err){
+    const now = new Date().toISOString();
+    try{
+      await saveCorrections(d => {
+        const e = d.tickets[t.key] || {agentId: t.agentId, ticketId: t.ticketId, fields: {}};
+        e.restored = inc; e.editedAt = e.editedAt || now; e.editedBy = adminName();
+        d.tickets[t.key] = e;
+      }, [audit(inc ? 'include' : 'delete', t, null, inc ? 'Ticket the agent removed is counted in totals and exports.' : 'Excluded again.')]);
+      $('editor').close();
+    }catch(e){ err.textContent = e.message || String(e); err.hidden = false; }
+  }
+
+  // ---------- add ticket ----------
+  function openAdd(){
+    const err = el('div', {class:'err', hidden:true});
+    const agentSel = el('select', {id:'n-agent'}, ...agents.map(a => el('option', {value: a.name || a.key}, a.name || a.key)));
+    const now = new Date(); const pad = n => String(n).padStart(2,'0');
+    const nowLocal = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    $('editor-body').replaceChildren(
+      el('h2', null, 'Add a ticket'),
+      el('div', {class:'hint'}, 'For work an agent did but didn’t log. It’s saved in your corrections file and included in totals and corrected exports as a finished ticket (it doesn’t appear in the agent’s tracker).'),
+      el('div', {class:'grid2'},
+        el('label', {class:'field'}, 'Agent', agents.length ? agentSel : el('input', {id:'n-agent', type:'text', placeholder:'Agent ID'})),
+        el('label', {class:'field'}, 'Started', el('input', {id:'n-start', type:'datetime-local', value: nowLocal}))),
+      el('div', {class:'grid2'},
+        el('label', {class:'field'}, 'Customer', el('input', {id:'e-customer', type:'text'})),
+        el('label', {class:'field'}, 'Category', el('input', {id:'e-category', type:'text'}))),
+      el('label', {class:'field'}, 'Complaint', el('textarea', {id:'e-complaint'})),
+      el('div', {class:'grid2'},
+        el('label', {class:'field'}, 'Time (hours:minutes:seconds)', el('input', {id:'e-time', type:'text', value:'00:30:00', inputmode:'numeric'})),
+        el('label', {class:'field'}, COMPETENCY_LABEL, competencySelect(null))),
+      err,
+      el('div', {class:'row-actions'}, el('span'), el('div', {class:'right'},
+        el('button', {class:'btn-ghost', type:'button', onclick: ()=> $('editor').close()}, 'Cancel'),
+        el('button', {class:'btn-primary', type:'button', onclick: ()=> saveAdd(err)}, 'Add ticket'))));
+    $('editor').showModal();
+  }
+  async function saveAdd(err){
+    err.hidden = true;
+    const agentId = ($('n-agent').value || '').trim();
+    if(!agentId){ err.textContent = 'Choose or enter an agent.'; err.hidden = false; return; }
+    const v = readEditor(err); if(!v) return;
+    const start = Date.parse($('n-start').value);
+    if(isNaN(start)){ err.textContent = 'Enter when the work started.'; err.hidden = false; return; }
+    const now = new Date().toISOString();
+    let newId = null;
+    try{
+      await saveCorrections(d => {
+        const n = Object.keys(d.added).reduce((m, k) => Math.max(m, parseInt(k.replace(/^A-/, ''), 10) || 0), 0) + 1;
+        newId = 'A-' + n;
+        d.added[newId] = Object.assign({id: newId, agentId, startedAt: new Date(start).toISOString(), finishedAt: new Date(start + v.totalMs).toISOString(), addedAt: now, addedBy: adminName(), editedAt: now}, v);
+        d.audit.push({id: uid(), at: now, by: adminName(), action:'add', agentId, ticketId: newId,
+          changes: {customerName:[null, v.customerName], category:[null, v.category], totalMs:[0, v.totalMs]}});
+      });
+      $('editor').close();
+    }catch(e){ err.textContent = e.message || String(e); err.hidden = false; }
+  }
+
+  // ---------- PIN reset ----------
+  function openPinDialog(a){
+    const err = el('div', {class:'err', hidden:true});
+    $('pin-body').replaceChildren(
+      el('h2', null, `Reset PIN for ${a.name}`),
+      el('div', {class:'hint'}, 'Choose a new 4–6 digit PIN and give it to the agent. Their tickets and log are kept. Their tracker (v4.10 or later) accepts the new PIN at sign-in, including after the browser has cleared its data.'),
+      el('div', {class:'grid2'},
+        el('label', {class:'field'}, 'New PIN', el('input', {id:'p1', type:'password', inputmode:'numeric', maxlength:'6', autocomplete:'off'})),
+        el('label', {class:'field'}, 'Confirm PIN', el('input', {id:'p2', type:'password', inputmode:'numeric', maxlength:'6', autocomplete:'off'}))),
+      err,
+      el('div', {class:'row-actions'}, el('span'), el('div', {class:'right'},
+        el('button', {class:'btn-ghost', type:'button', onclick: ()=> $('pin-dialog').close()}, 'Cancel'),
+        el('button', {class:'btn-primary', type:'button', id:'pin-save', onclick: ()=> resetPin(a, err)}, 'Reset PIN'))));
+    $('pin-dialog').showModal();
+    setTimeout(()=> $('p1').focus(), 0);
+  }
+  async function resetPin(a, err){
+    err.hidden = true;
+    const p1 = $('p1').value, p2 = $('p2').value;
+    if(!/^\d{4,6}$/.test(p1)){ err.textContent = 'PIN must be 4–6 digits.'; err.hidden = false; return; }
+    if(p1 !== p2){ err.textContent = 'PINs do not match.'; err.hidden = false; return; }
+    const st = states[a.key]; if(!st){ err.textContent = 'This agent has no account file.'; err.hidden = false; return; }
+    $('pin-save').disabled = true;
+    try{
+      const agentId = st.data.account.agentId;
+      const salt = toHex(crypto.getRandomValues(new Uint8Array(16)));
+      const now = new Date().toISOString();
+      const acct = {agentId, kdf:'pbkdf2-sha256', iterations: PIN_ITERATIONS, salt, pinHash: await derivePin(agentId, p1, salt, PIN_ITERATIONS), createdAt: now, resetByAdmin: {at: now, by: adminName()}};
+      await withLock('ticket-tracker-log-folder', async ()=>{    // same lock name the tracker uses for this folder
+        const fh = await dir.getFileHandle(st.fileName);
+        let data;
+        try{ data = JSON.parse(await (await fh.getFile()).text()); }catch(e){ throw new Error('The agent’s account file couldn’t be read (it may be syncing). Try again in a moment.'); }
+        if(!data || !data.account || normalizeAgentKey(data.account.agentId) !== a.key) throw new Error('The account file changed unexpectedly. Click Refresh and try again.');
+        data.account = acct;   // tickets and everything else in the file are kept
+        try{ const w = await fh.createWritable(); await w.write(JSON.stringify(data, null, 1)); await w.close(); }catch(e){ throw folderError(e); }
+      });
+      await saveCorrections(()=>{}, [{id: uid(), at: now, by: adminName(), action:'pin_reset', agentId, ticketId:'', changes:null, note:'New PIN set by admin. The agent signs in with it next time.'}]);
+      $('pin-dialog').close();
+      showBanner(`PIN reset for ${agentId}. Give them the new PIN; their tracker asks for it at their next sign-in.`);
+      await loadAll();
+    }catch(e){ err.textContent = e.message || String(e); err.hidden = false; }
+    finally{ const b = $('pin-save'); if(b) b.disabled = false; }
+  }
+
+  // ---------- folder open / reconnect ----------
+  async function useFolder(h){
+    dir = h;
+    await saveHandle(h);
+    $('start').hidden = true; $('app').removeAttribute('inert');
+    try{ localStorage.setItem(NAME_KEY, $('admin-name').value.trim()); }catch(e){}
+    await loadAll();
+  }
+  function startError(msg){ const e = $('start-error'); e.textContent = msg; e.hidden = !msg; }
+  async function pickFolder(){
+    startError('');
+    if(!DIR_SUPPORTED){ startError('This page needs Chrome or Edge to open a folder.'); return; }
+    if(EMBEDDED){ startError('The browser blocks folder access while this page is embedded. Open the .html file directly in Chrome or Edge.'); return; }
+    try{
+      const h = await window.showDirectoryPicker({id:'ticket-tracker-logs', mode:'readwrite'});
+      if(await h.requestPermission({mode:'readwrite'}) !== 'granted'){ startError('Write permission is needed to save your corrections.'); return; }
+      await useFolder(h);
+    }catch(e){ if(!(e && e.name === 'AbortError')) startError('Couldn’t open the folder: ' + ((e && e.message) || e)); }
+  }
+  let savedHandle = null;
+  async function reconnect(){
+    startError('');
+    try{
+      if(await savedHandle.requestPermission({mode:'readwrite'}) === 'granted') await useFolder(savedHandle);
+      else startError('Permission wasn’t granted. Choose the folder again.');
+    }catch(e){ startError('Couldn’t reopen the folder: ' + ((e && e.message) || e)); }
+  }
+  async function refresh(){
+    if(!dir) return;
+    try{
+      if(await dir.queryPermission({mode:'readwrite'}) !== 'granted' && await dir.requestPermission({mode:'readwrite'}) !== 'granted'){ showBanner('Permission to the folder is needed. Click Refresh again or choose the folder.', true); return; }
+      showBanner('');
+      await loadAll();
+    }catch(e){ showBanner('Couldn’t read the folder: ' + ((e && e.message) || e), true); }
+  }
+
+  // ---------- theme ----------
+  function applyTheme(th){
+    if(th === 'dark' || th === 'light') document.documentElement.setAttribute('data-theme', th); else document.documentElement.removeAttribute('data-theme');
+    const dark = th === 'dark' || (th !== 'light' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    $('theme').textContent = dark ? '☀️ Light mode' : '🌙 Dark mode';
+  }
+
+  // ---------- wiring ----------
+  document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', ()=>{
+    activeTab = b.dataset.tab;
+    document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === b));
+    for(const n of ['tickets','summary','agents','history']) $('tab-' + n).hidden = n !== activeTab;
+    $('filters').hidden = !(activeTab === 'tickets' || activeTab === 'summary');
+    renderAll();
+  }));
+  ['f-search','f-agent','f-category','f-status','f-from','f-to'].forEach(id => $(id).addEventListener(id === 'f-search' ? 'input' : 'change', ()=>{ page = 0; renderAll(); }));
+  $('f-clear').addEventListener('click', ()=>{ ['f-search','f-agent','f-category','f-from','f-to'].forEach(id => $(id).value = ''); $('f-status').value = 'all'; page = 0; renderAll(); });
+  $('group-by').addEventListener('change', renderSummary);
+  $('open-folder').addEventListener('click', pickFolder);
+  $('reconnect-folder').addEventListener('click', reconnect);
+  $('change-folder').addEventListener('click', ()=>{ $('start').hidden = false; $('app').setAttribute('inert', ''); });
+  $('refresh').addEventListener('click', refresh);
+  $('add-ticket').addEventListener('click', openAdd);
+  $('dl-filtered').addEventListener('click', ()=> download(`ticket-admin-filtered-${localDate(Date.now())}.csv`, ticketsCsv(filtered())));
+  $('dl-tickets').addEventListener('click', ()=> download(`ticket-admin-tickets-${localDate(Date.now())}.csv`, ticketsCsv(sortedForExport(tickets.filter(counted)))));
+  $('dl-log').addEventListener('click', ()=> download(`ticket-admin-work-log-${localDate(Date.now())}.csv`, workLogCsv()));
+  $('theme').addEventListener('click', ()=>{
+    const cur = document.documentElement.getAttribute('data-theme');
+    const dark = cur === 'dark' || (!cur && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const next = dark ? 'light' : 'dark';
+    try{ localStorage.setItem(THEME_KEY, next); }catch(e){}
+    applyTheme(next);
+  });
+  window.addEventListener('focus', ()=>{ if(dir && Date.now() - loadedAt > 60000 && !$('editor').open && !$('pin-dialog').open) refresh(); });
+
+  (async function init(){
+    let th = 'system'; try{ th = localStorage.getItem(THEME_KEY) || 'system'; }catch(e){}
+    applyTheme(th);
+    try{ $('admin-name').value = localStorage.getItem(NAME_KEY) || ''; }catch(e){}
+    savedHandle = await loadHandle();
+    if(savedHandle){
+      try{
+        if(await savedHandle.queryPermission({mode:'readwrite'}) === 'granted'){ await useFolder(savedHandle); return; }
+      }catch(e){}
+      const b = $('reconnect-folder'); b.textContent = `Reopen “${savedHandle.name}”`; b.hidden = false;
+    }
+  })();
+})();
+</script>
+</body>
+</html>
