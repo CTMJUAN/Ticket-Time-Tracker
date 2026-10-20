@@ -472,6 +472,7 @@ details summary{cursor:pointer; font-size:0.84rem; color:var(--sub);}
     const c = t.corr, L = t.L;
     t.cur = Object.assign({}, L);
     t.flags = {added:false, deleted:false, edited:false, overridden:[], removedByAgent: L.status === 'removed'};
+    t.timeApplied = false;
     if(c){
       const at = Date.parse(c.editedAt) || 0;
       const f = c.fields || {};
@@ -485,19 +486,25 @@ details summary{cursor:pointer; font-size:0.84rem; color:var(--sub);}
         t.cur[k] = want;
       }
       const tAt = Date.parse(c.timeEditedAt);
-      if(Number.isFinite(c.totalMs) && !isNaN(tAt)){
-        const applied = (t.live && t.live.adminTimeVersion && Date.parse(t.live.adminTimeVersion) >= tAt) ||
+      if((Number.isFinite(c.deltaMs) || Number.isFinite(c.totalMs)) && !isNaN(tAt)){
+        t.timeApplied = (t.live && t.live.adminTimeVersion && Date.parse(t.live.adminTimeVersion) >= tAt) ||
                         t.events.some(e => e.event === 'admin_correction_applied' && e.tsMs >= tAt);
-        if(!applied){
-          const lt = t.live;
-          const since = lt && lt.status === 'running' ? Math.max(0, now - Math.max(tAt, lt.lastResumeAt || 0)) : 0;
-          t.cur.totalMs = c.totalMs + since;
+        if(!t.timeApplied){
+          if(Number.isFinite(c.deltaMs)){
+            // The agent's tracker (v4.11+) adds the difference to whatever it has by then.
+            t.cur.totalMs = Math.max(0, L.totalMs + c.deltaMs);
+          }else{
+            // Saved by an older admin page: the total as of that save.
+            const lt = t.live;
+            const since = lt && lt.status === 'running' ? Math.max(0, now - Math.max(tAt, lt.lastResumeAt || 0)) : 0;
+            t.cur.totalMs = c.totalMs + since;
+          }
         }
       }
       if(c.deleted === true) t.flags.deleted = true;
       if(t.flags.removedByAgent && c.restored === true) t.flags.removedByAgent = false;
       const o = c.original || {};
-      t.flags.edited = adminFields(t).some(k => k in o && !same(k, o[k], t.cur[k]));
+      t.flags.edited = adminFields(t).some(k => k === 'totalMs' && Number.isFinite(c.adjustMs) ? !same(k, c.adjustMs, 0) : (k in o && !same(k, o[k], t.cur[k])));
     }
     t.display = t.flags.deleted ? 'deleted' : L.status === 'removed' ? 'removed' : t.cur.status;
   }
@@ -505,8 +512,32 @@ details summary{cursor:pointer; font-size:0.84rem; color:var(--sub);}
   function adminFields(t){
     const c = t.corr; if(!c) return [];
     const ks = Object.keys(c.fields || {}).filter(k => k in FIELD_EVENTS && !t.flags.overridden.includes(k));
-    if(Number.isFinite(c.totalMs)) ks.push('totalMs');
+    if(Number.isFinite(c.totalMs) || Number.isFinite(c.deltaMs)) ks.push('totalMs');
     return ks;
+  }
+  // The agent's own tracker total right now, including any admin change it has already applied.
+  function agentNowMs(t){
+    const lt = t.live;
+    if(lt && lt.status === 'running' && lt.lastResumeAt) return (Number(lt.accumulatedMs) || 0) + Math.max(0, Date.now() - lt.lastResumeAt);
+    return t.L.totalMs;
+  }
+  // How much of the admin's time changes the agent's tracker already carries.
+  function appliedAdjustMs(t){
+    const c = t.corr;
+    if(!c || !Number.isFinite(c.adjustMs)) return 0;
+    return c.adjustMs - (t.timeApplied ? 0 : (c.deltaMs || 0));
+  }
+  // Time edits are stored as a difference from the agent's own total, so time the agent works
+  // before their tracker picks the edit up still counts. totalMs is for trackers before v4.11.
+  function setTime(e, t, totalMs, now){
+    e.deltaMs = totalMs - agentNowMs(t);
+    e.adjustMs = appliedAdjustMs(t) + e.deltaMs;
+    e.totalMs = totalMs;
+    e.timeEditedAt = now;
+  }
+  // The total without any admin time changes, or null for edits from an older admin page.
+  function agentOwnMs(t){
+    return t.corr && Number.isFinite(t.corr.adjustMs) ? Math.max(0, agentNowMs(t) - appliedAdjustMs(t)) : null;
   }
   function same(k, a, b){
     if(k === 'totalMs') return Math.floor((a || 0) / 1000) === Math.floor((b || 0) / 1000);
@@ -787,7 +818,10 @@ details summary{cursor:pointer; font-size:0.84rem; color:var(--sub);}
     const c = t.cur, o = t.corr && t.corr.original ? t.corr.original : null;
     const body = $('editor-body');
     const mine = adminFields(t);
-    const origNote = k => (o && mine.includes(k) && k in o && !same(k, o[k], c[k])) ? el('div', {class:'orig'}, `Agent’s original: ${fmtVal(k, o[k])}`) : null;
+    const own = agentOwnMs(t);
+    const origNote = k => k === 'totalMs' && own != null
+      ? (mine.includes(k) && !same(k, own, c[k]) ? el('div', {class:'orig'}, `Agent’s own time: ${fmtVal(k, own)}`) : null)
+      : (o && mine.includes(k) && k in o && !same(k, o[k], c[k])) ? el('div', {class:'orig'}, `Agent’s original: ${fmtVal(k, o[k])}`) : null;
     const err = el('div', {class:'err', hidden:true});
     const live = t.live && ['running','paused'].includes(t.live.status);
     body.replaceChildren(...[
@@ -858,7 +892,7 @@ details summary{cursor:pointer; font-size:0.84rem; color:var(--sub);}
           if(!e.original) e.original = {customerName: snapshot.customerName, category: snapshot.category, complaint: snapshot.complaint, competency: snapshot.competency, totalMs: snapshot.totalMs};
           e.fields = e.fields || {};
           for(const k of Object.keys(changes)){
-            if(k === 'totalMs'){ e.totalMs = v.totalMs; e.timeEditedAt = now; }
+            if(k === 'totalMs') setTime(e, t, v.totalMs, now);
             else e.fields[k] = v[k];
           }
           e.editedAt = now; e.editedBy = adminName();
@@ -872,7 +906,9 @@ details summary{cursor:pointer; font-size:0.84rem; color:var(--sub);}
     const o = t.corr && t.corr.original; if(!o) return;
     const changes = {};
     const mine = adminFields(t);
-    for(const k of mine) if(k in o && !same(k, t.cur[k], o[k])) changes[k] = [t.cur[k] ?? null, o[k] ?? null];
+    const own = agentOwnMs(t);
+    const target = k => k === 'totalMs' && own != null ? own : o[k];
+    for(const k of mine) if((k in o || (k === 'totalMs' && own != null)) && !same(k, t.cur[k], target(k))) changes[k] = [t.cur[k] ?? null, target(k) ?? null];
     const now = new Date().toISOString();
     try{
       // Revert = a new edit back to the agent's values, so an open ticket in the tracker changes back too.
@@ -881,7 +917,7 @@ details summary{cursor:pointer; font-size:0.84rem; color:var(--sub);}
         const f = {};
         for(const k of mine) if(k !== 'totalMs' && k in o) f[k] = k === 'competency' ? (o[k] ?? null) : (o[k] ?? '');
         e.fields = f;
-        if('totalMs' in changes){ e.totalMs = o.totalMs; e.timeEditedAt = now; }
+        if('totalMs' in changes) setTime(e, t, target('totalMs'), now);
         e.editedAt = now; e.editedBy = adminName();
       }, [audit('revert', t, changes)]);
       $('editor').close();
